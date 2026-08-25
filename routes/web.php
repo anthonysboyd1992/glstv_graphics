@@ -1,6 +1,8 @@
 <?php
 
 use App\Livewire\Assets\Library as AssetLibrary;
+use App\Livewire\Layouts\Editor as LayoutEditor;
+use App\Livewire\Layouts\Index as Layouts;
 use App\Livewire\Shows\Board;
 use App\Livewire\Shows\Cues;
 use App\Livewire\Shows\Index as Shows;
@@ -15,6 +17,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('shows', Shows::class)->name('shows.index');
     Route::livewire('shows/{show}/board', Board::class)->name('shows.board');
     Route::livewire('shows/{show}/cues', Cues::class)->name('shows.cues');
+
+    Route::livewire('layouts', Layouts::class)->name('layouts.index');
+    Route::livewire('layouts/{layout}', LayoutEditor::class)->name('layouts.edit');
 
     Route::livewire('assets', AssetLibrary::class)->name('assets.library');
     Route::livewire('users', Users::class)->middleware('can:users.manage')->name('users.index');

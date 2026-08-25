@@ -6,7 +6,6 @@ use App\Models\Asset;
 use App\Models\Look;
 use App\Models\LookItem;
 use App\Models\Show;
-use App\Models\TextKey;
 use DOMDocument;
 
 /**
@@ -33,7 +32,7 @@ class DataSourceBuilder
      */
     public function row(Show $show): array
     {
-        $show->loadMissing('sections', 'textDefaults.textKey');
+        $show->loadMissing('sections', 'layout.textGroups.textKeys', 'textDefaults.textKey');
 
         $state = $this->normalise($show->current_state, $show);
 
@@ -61,7 +60,7 @@ class DataSourceBuilder
      */
     public function rundownRows(Show $show): array
     {
-        $show->loadMissing('sections', 'textDefaults.textKey');
+        $show->loadMissing('sections', 'layout.textGroups.textKeys', 'textDefaults.textKey');
 
         $looks = $show->looks()->with('items')->get();
         $state = $this->baseline($show);
@@ -125,7 +124,7 @@ class DataSourceBuilder
                 : '';
         }
 
-        foreach (TextKey::catalog() as $textKey) {
+        foreach ($show->catalogTextKeys() as $textKey) {
             $row[$textKey->fieldName()] = (string) (
                 $state['text'][$textKey->fieldName()]
                 ?? $state['text'][$textKey->key]

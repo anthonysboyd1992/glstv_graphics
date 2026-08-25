@@ -14,16 +14,17 @@ touching this app.
 
 **Broadcasts** are vMix PCs — GLSTV1, GLSTV2, GLSTV3 — not one-off race
 nights. Each box has a stable identifier and data source URLs, its own
-sections, cue stack, live text and defaults. The date on a broadcast is the
-night that box is covering.
+sections, cue stack, live text and defaults.
 
 **Text keys** are grouped, and vMix sees them as `Group.key` —
-`Rundown.now_racing`, `Break.brb_message`. Groups and keys are shared across
-every box, so a title mapped on GLSTV1 keeps working on GLSTV2. Live values and
-defaults stay per box.
+`Rundown.now_racing`, `Break.brb_message`. Groups belong to a **layout**, so
+every Dirt Track box shares the same fields and an Awards overlay does not
+inherit `now_racing`. Live values and defaults stay per box.
 
-A new broadcast starts with the usual dirt-track image slots. Duplicate an
-existing box if you want that shape and the cue stack too.
+A new broadcast copies a **layout** — image slots and caption groups. Dirt
+Track is the starter; add others for studio, awards, or a different overlay
+package. Duplicate an existing box if you want that shape and the cue stack
+too.
 
 **Assets** are graphics stored once and addressed by content hash. Re-uploading
 the same file collapses onto the existing record, so a URL vMix has already
@@ -66,7 +67,9 @@ npm run build
 ```
 
 The seeder creates three demo boxes (GLSTV1–GLSTV3) covering the next Saturday,
-with the dirt-track layout and a short cue stack.
+with the dirt-track layout and a short cue stack. Layouts (reusable slot and
+caption catalogs) live under Broadcast → Layouts; a new box copies whichever
+one you pick.
 To fill the board with obviously-fake graphics sized to each section:
 
 ```bash

@@ -1,13 +1,18 @@
 <section class="w-full space-y-8">
-    <div class="flex items-start justify-between gap-4">
-        <div>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0 flex-1">
             <h1 class="text-2xl font-semibold tracking-tight">{{ __('Users') }}</h1>
-            <p class="mt-1 text-sm text-zinc-400">{{ __('Who can run a box, edit cues, and manage this list.') }}</p>
+            <p class="mt-1 max-w-2xl text-sm text-zinc-400">{{ __('People, roles, and which pieces of the truck each role can touch.') }}</p>
         </div>
 
-        <x-ui.btn variant="primary" icon="plus" wire:click="$set('creating', true)">
-            {{ __('New user') }}
-        </x-ui.btn>
+        <div class="flex items-center gap-2">
+            <x-ui.btn icon="plus" wire:click="openCreateRole">
+                {{ __('New role') }}
+            </x-ui.btn>
+            <x-ui.btn variant="primary" icon="plus" wire:click="openCreateUser">
+                {{ __('New user') }}
+            </x-ui.btn>
+        </div>
     </div>
 
     <x-ui.card class="overflow-hidden">
@@ -47,16 +52,25 @@
                                 @endforeach
                             </select>
                         </td>
-                        <td class="px-4 py-3 text-right">
-                            <x-ui.btn
-                                size="xs"
-                                variant="danger"
-                                icon="trash"
-                                wire:click="delete({{ $user->id }})"
-                                wire:confirm="{{ __('Delete this user? They will no longer be able to sign in.') }}"
-                                :title="__('Delete')"
-                                :disabled="$user->is(auth()->user())"
-                            />
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-1">
+                                <x-ui.btn
+                                    size="xs"
+                                    variant="ghost"
+                                    icon="pencil-square"
+                                    wire:click="startEdit({{ $user->id }})"
+                                    :title="__('Edit')"
+                                />
+                                <x-ui.btn
+                                    size="xs"
+                                    variant="danger"
+                                    icon="trash"
+                                    wire:click="delete({{ $user->id }})"
+                                    wire:confirm="{{ __('Delete this user? They will no longer be able to sign in.') }}"
+                                    :title="__('Delete')"
+                                    :disabled="$user->is(auth()->user())"
+                                />
+                            </div>
                         </td>
                     </tr>
                 @endforeach
@@ -64,17 +78,38 @@
         </table>
     </x-ui.card>
 
-    <div>
-        <h2 class="text-lg font-semibold">{{ __('Roles') }}</h2>
-        <p class="mt-1 text-sm text-zinc-400">{{ __('Admin always has every permission. The others can be trimmed to match how the truck is staffed.') }}</p>
+    <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+            <h2 class="text-lg font-semibold">{{ __('Roles') }}</h2>
+            <p class="mt-1 text-sm text-zinc-400">{{ __('Admin always has every permission. Built-in roles can be trimmed; add your own for a custom split.') }}</p>
+        </div>
     </div>
 
     <div class="grid gap-4 lg:grid-cols-2">
         @foreach ($this->roles as $role)
             <x-ui.card class="space-y-4 p-5" wire:key="role-{{ $role->id }}">
-                <div>
-                    <h3 class="font-semibold">{{ $role->name }}</h3>
-                    <p class="mt-1 text-sm text-zinc-400">{{ $role->description }}</p>
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 class="font-semibold">{{ $role->name }}</h3>
+                        <p class="mt-1 text-sm text-zinc-400">{{ $role->description ?: __('No description.') }}</p>
+                        <p class="mt-1 text-xs text-zinc-500">{{ trans_choice(':count person|:count people', $role->users_count, ['count' => $role->users_count]) }}</p>
+                    </div>
+                    @if (! $role->isAdmin())
+                        <div class="flex shrink-0 gap-1">
+                            <x-ui.btn size="xs" variant="ghost" icon="pencil-square" wire:click="startEditRole({{ $role->id }})" :title="__('Edit')" />
+                            @if (! $role->isBuiltIn())
+                                <x-ui.btn
+                                    size="xs"
+                                    variant="danger"
+                                    icon="trash"
+                                    wire:click="deleteRole({{ $role->id }})"
+                                    wire:confirm="{{ __('Delete this role?') }}"
+                                    :title="$role->users_count > 0 ? __('Move people off this role first') : __('Delete')"
+                                    :disabled="$role->users_count > 0"
+                                />
+                            @endif
+                        </div>
+                    @endif
                 </div>
 
                 @if ($role->isAdmin())
@@ -86,11 +121,13 @@
                                 <p class="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">{{ $group }}</p>
                                 <div class="space-y-2">
                                     @foreach ($permissions as $permission)
-                                        <x-ui.checkbox
-                                            :label="$permission['name']"
-                                            wire:click.prevent="togglePermission({{ $role->id }}, '{{ $permission['slug'] }}')"
-                                            @checked($role->hasPermission($permission['slug']))
-                                        />
+                                        <div wire:key="perm-{{ $role->id }}-{{ $permission['slug'] }}-{{ $role->hasPermission($permission['slug']) ? '1' : '0' }}">
+                                            <x-ui.checkbox
+                                                :label="$permission['name']"
+                                                :checked="$role->hasPermission($permission['slug'])"
+                                                wire:click.prevent="togglePermission({{ $role->id }}, '{{ $permission['slug'] }}')"
+                                            />
+                                        </div>
                                     @endforeach
                                 </div>
                             </div>
@@ -101,17 +138,17 @@
         @endforeach
     </div>
 
-    @if ($creating)
-        <x-ui.modal close="creating">
-            <form wire:submit="create" class="space-y-5">
+    @if ($userFormOpen)
+        <x-ui.modal close="userFormOpen">
+            <form wire:submit="{{ $editingUserId ? 'updateUser' : 'create' }}" class="space-y-5">
                 <div>
-                    <h2 class="text-lg font-semibold">{{ __('New user') }}</h2>
-                    <p class="mt-1 text-sm text-zinc-400">{{ __('They can sign in immediately. Viewers can watch; operators can take the show.') }}</p>
+                    <h2 class="text-lg font-semibold">{{ $editingUserId ? __('Edit user') : __('New user') }}</h2>
+                    <p class="mt-1 text-sm text-zinc-400">{{ $editingUserId ? __('Leave the password blank to keep the current one.') : __('They can sign in immediately. Pick the role that matches what they do on the truck.') }}</p>
                 </div>
 
                 <x-ui.input wire:model="name" :label="__('Name')" required />
                 <x-ui.input wire:model="email" type="email" :label="__('Email')" required />
-                <x-ui.input wire:model="password" type="password" :label="__('Password')" viewable required />
+                <x-ui.input wire:model="password" type="password" :label="__('Password')" viewable :required="! $editingUserId" />
                 <x-ui.select wire:model="roleId" :label="__('Role')">
                     @foreach ($this->roles as $role)
                         <option value="{{ $role->id }}">{{ $role->name }}</option>
@@ -119,8 +156,27 @@
                 </x-ui.select>
 
                 <div class="flex justify-end gap-2">
-                    <x-ui.btn variant="ghost" type="button" wire:click="$set('creating', false)">{{ __('Cancel') }}</x-ui.btn>
-                    <x-ui.btn variant="primary" type="submit">{{ __('Create') }}</x-ui.btn>
+                    <x-ui.btn variant="ghost" type="button" wire:click="$set('userFormOpen', false)">{{ __('Cancel') }}</x-ui.btn>
+                    <x-ui.btn variant="primary" type="submit">{{ $editingUserId ? __('Save') : __('Create') }}</x-ui.btn>
+                </div>
+            </form>
+        </x-ui.modal>
+    @endif
+
+    @if ($roleFormOpen)
+        <x-ui.modal close="roleFormOpen">
+            <form wire:submit="{{ $editingRoleId ? 'updateRoleDetails' : 'createRole' }}" class="space-y-5">
+                <div>
+                    <h2 class="text-lg font-semibold">{{ $editingRoleId ? __('Edit role') : __('New role') }}</h2>
+                    <p class="mt-1 text-sm text-zinc-400">{{ $editingRoleId ? __('The name is what you see on the people list.') : __('Starts with no permissions. Tick what this role can do after you create it.') }}</p>
+                </div>
+
+                <x-ui.input wire:model="roleName" :label="__('Name')" placeholder="Replay" required />
+                <x-ui.input wire:model="roleDescription" :label="__('Description')" placeholder="{{ __('What this role is for') }}" />
+
+                <div class="flex justify-end gap-2">
+                    <x-ui.btn variant="ghost" type="button" wire:click="$set('roleFormOpen', false)">{{ __('Cancel') }}</x-ui.btn>
+                    <x-ui.btn variant="primary" type="submit">{{ $editingRoleId ? __('Save') : __('Create') }}</x-ui.btn>
                 </div>
             </form>
         </x-ui.modal>

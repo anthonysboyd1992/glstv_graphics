@@ -43,10 +43,5 @@
                 {{ __('Log in') }}
             </x-ui.btn>
         </form>
-
-        <p class="text-center text-sm text-zinc-400">
-            {{ __('Don\'t have an account?') }}
-            <a href="{{ route('register') }}" wire:navigate class="font-medium text-zinc-200 underline hover:text-white">{{ __('Sign up') }}</a>
-        </p>
     </div>
 </x-layouts::auth>

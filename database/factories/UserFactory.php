@@ -42,11 +42,6 @@ class UserFactory extends Factory
         return $this->state(fn () => ['role_id' => User::roleId($slug)]);
     }
 
-    public function viewer(): static
-    {
-        return $this->asRole('viewer');
-    }
-
     public function operator(): static
     {
         return $this->asRole('operator');
@@ -55,6 +50,11 @@ class UserFactory extends Factory
     public function director(): static
     {
         return $this->asRole('director');
+    }
+
+    public function graphics(): static
+    {
+        return $this->asRole('graphics');
     }
 
     /**

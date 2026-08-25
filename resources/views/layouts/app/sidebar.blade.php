@@ -36,6 +36,18 @@
                             {{ __('Broadcasts') }}
                         </a>
                         <a
+                            href="{{ route('layouts.index') }}"
+                            wire:navigate
+                            @class([
+                                'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm',
+                                'bg-zinc-800 text-white' => request()->routeIs('layouts.*'),
+                                'text-zinc-400 hover:bg-zinc-900 hover:text-white' => ! request()->routeIs('layouts.*'),
+                            ])
+                        >
+                            <x-icon name="squares-2x2" class="size-4" />
+                            {{ __('Layouts') }}
+                        </a>
+                        <a
                             href="{{ route('assets.library') }}"
                             wire:navigate
                             @class([

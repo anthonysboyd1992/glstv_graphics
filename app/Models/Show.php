@@ -6,27 +6,27 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
- * A vMix PC (GLSTV1, GLSTV2, …). The date is the night that box is covering.
- * Data source URLs key on uuid so renaming the station never invalidates vMix.
+ * A vMix PC (GLSTV1, GLSTV2, …). Data source URLs key on uuid so renaming
+ * the station never invalidates vMix.
  *
  * @property int $id
  * @property string $uuid
  * @property string $name
  * @property string $slug
  * @property string $token
- * @property Carbon|null $scheduled_for
  * @property string $status
  * @property array{sections?: array<string, array{asset_id?: int|null}>, text?: array<string, string|null>}|null $current_state
  * @property int|null $active_look_id
  * @property int|null $preview_look_id
+ * @property int|null $layout_id
  */
 #[Fillable([
     'uuid', 'name', 'slug', 'token',
-    'scheduled_for', 'status', 'current_state', 'active_look_id', 'preview_look_id',
+    'status', 'current_state', 'active_look_id', 'preview_look_id', 'layout_id',
 ])]
 class Show extends Model
 {
@@ -36,7 +36,6 @@ class Show extends Model
     protected function casts(): array
     {
         return [
-            'scheduled_for' => 'datetime',
             'current_state' => 'array',
         ];
     }
@@ -66,6 +65,12 @@ class Show extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    /** @return BelongsTo<Layout, $this> */
+    public function layout(): BelongsTo
+    {
+        return $this->belongsTo(Layout::class);
     }
 
     /** @return HasMany<Section, $this> */
@@ -103,6 +108,20 @@ class Show extends Model
         return $this->current_state['sections'][$key]['asset_id'] ?? null;
     }
 
+    /** @return Collection<int, TextGroup> */
+    public function catalogTextGroups(): Collection
+    {
+        $this->loadMissing('layout.textGroups.textKeys');
+
+        return $this->layout?->textGroups ?? collect();
+    }
+
+    /** @return Collection<int, TextKey> */
+    public function catalogTextKeys(): Collection
+    {
+        return $this->catalogTextGroups()->flatMap->textKeys;
+    }
+
     public function textValue(string $key): ?string
     {
         $text = $this->current_state['text'] ?? [];
@@ -111,7 +130,7 @@ class Show extends Model
             return $text[$key];
         }
 
-        $match = TextKey::catalog()->first(
+        $match = $this->catalogTextKeys()->first(
             fn (TextKey $textKey) => $textKey->key === $key || $textKey->fieldName() === $key
         );
 
@@ -150,7 +169,7 @@ class Show extends Model
             return $map[$key];
         }
 
-        $match = TextKey::catalog()->first(
+        $match = $this->catalogTextKeys()->first(
             fn (TextKey $textKey) => $textKey->key === $key || $textKey->fieldName() === $key
         );
 

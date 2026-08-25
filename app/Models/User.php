@@ -81,9 +81,9 @@ class User extends Authenticatable implements PasskeyUser
         return self::roleId('admin');
     }
 
-    public static function viewerRoleId(): int
+    public static function operatorRoleId(): int
     {
-        return self::roleId('viewer');
+        return self::roleId('operator');
     }
 
     public static function adminCount(): int

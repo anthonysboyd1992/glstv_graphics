@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Access;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -20,6 +21,11 @@ class Role extends Model
     public function isAdmin(): bool
     {
         return $this->slug === 'admin';
+    }
+
+    public function isBuiltIn(): bool
+    {
+        return Access::isBuiltInRole($this->slug);
     }
 
     /** @return BelongsToMany<Permission, $this> */

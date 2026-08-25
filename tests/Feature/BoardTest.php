@@ -298,7 +298,7 @@ class BoardTest extends TestCase
 
     public function test_a_text_field_default_can_be_updated_and_fields_reordered(): void
     {
-        $keys = TextKey::catalog();
+        $keys = TextKey::catalog($this->show->layout);
         $first = $keys[0];
         $second = $keys[1];
 
@@ -311,7 +311,7 @@ class BoardTest extends TestCase
 
         $this->assertSame('Sprints Heat 1', $this->show->fresh()->defaultFor($first->key));
 
-        $reordered = TextKey::catalog()->pluck('id');
+        $reordered = TextKey::catalog($this->show->fresh()->layout)->pluck('id');
 
         $this->assertSame([$second->id, $first->id], $reordered->take(2)->all());
     }
@@ -425,7 +425,7 @@ class BoardTest extends TestCase
 
         Livewire::test(Board::class, ['show' => $other->fresh()])
             ->assertSee('Track Conditions')
-            ->assertSee('Rundown.track_conditions')
+            ->assertSee('track_conditions')
             ->assertSet('text.'.$nowRacing->id, $other->fresh()->defaultFor('now_racing'))
             ->assertSet('defaults.'.$nowRacing->id, $other->fresh()->defaultFor('now_racing'));
 
@@ -526,13 +526,45 @@ class BoardTest extends TestCase
         $this->assertSame(640, $first->width);
     }
 
-    public function test_a_viewer_cannot_assign_an_asset(): void
+    public function test_graphics_cannot_assign_an_asset(): void
     {
-        $this->actingAs(User::factory()->viewer()->create());
+        $this->actingAs(User::factory()->graphics()->create());
         $bug = $this->storeAsset('score-bug', 1920, 180);
 
         Livewire::test(Board::class, ['show' => $this->show])
             ->call('assign', 'ScoreBug', $bug->id)
+            ->assertForbidden();
+    }
+
+    public function test_graphics_cannot_take_a_cue(): void
+    {
+        $this->actingAs(User::factory()->graphics()->create());
+        $look = $this->show->looks()->firstOrFail();
+
+        Livewire::test(Board::class, ['show' => $this->show])
+            ->call('arm', $look->id)
+            ->assertForbidden();
+    }
+
+    public function test_graphics_cannot_edit_live_captions(): void
+    {
+        $this->actingAs(User::factory()->graphics()->create());
+        $nowRacing = TextKey::query()->where('key', 'now_racing')->firstOrFail();
+
+        Livewire::test(Board::class, ['show' => $this->show])
+            ->set('text.'.$nowRacing->id, 'Heat 1')
+            ->call('saveText', $nowRacing->id)
+            ->assertForbidden();
+    }
+
+    public function test_operator_cannot_add_a_section(): void
+    {
+        $this->actingAs(User::factory()->operator()->create());
+
+        Livewire::test(Board::class, ['show' => $this->show])
+            ->set('newSection.key', 'Ticker')
+            ->set('newSection.label', 'Ticker')
+            ->call('addSection')
             ->assertForbidden();
     }
 

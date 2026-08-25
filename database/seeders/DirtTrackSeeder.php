@@ -9,8 +9,8 @@ use Illuminate\Support\Str;
 
 /**
  * Three vMix boxes covering the same Saturday night, so the board can be
- * exercised the way a real race night is: GLSTV1, GLSTV2, GLSTV3 sharing
- * caption fields and carrying their own values, defaults and cue stacks.
+ * exercised the way a real race night is: GLSTV1, GLSTV2, GLSTV3 sharing the
+ * dirt-track caption groups and carrying their own values, defaults and cues.
  */
 class DirtTrackSeeder extends Seeder
 {
@@ -19,8 +19,6 @@ class DirtTrackSeeder extends Seeder
         if (Show::where('slug', 'glstv1')->exists()) {
             return;
         }
-
-        $night = now()->next('Saturday')->setTime(18, 0);
 
         DefaultLayout::ensureTextKeys();
 
@@ -31,7 +29,6 @@ class DirtTrackSeeder extends Seeder
                 'slug' => Str::slug($name),
                 'token' => Str::random(48),
                 'status' => 'draft',
-                'scheduled_for' => $night,
             ]);
 
             DefaultLayout::install($show);

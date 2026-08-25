@@ -3,6 +3,7 @@
 namespace App\Livewire\Shows;
 
 use App\Concerns\Toasts;
+use App\Models\Layout;
 use App\Models\Show;
 use App\Services\Shows\DefaultLayout;
 use App\Support\Access;
@@ -20,33 +21,55 @@ class Index extends Component
     #[Validate('required|string|max:120')]
     public string $name = '';
 
-    #[Validate('nullable|date')]
-    public ?string $scheduledFor = null;
+    public string $layoutId = '';
 
     public bool $creating = false;
+
+    public function mount(): void
+    {
+        DefaultLayout::ensureLayouts();
+        $this->layoutId = (string) (Layout::query()->orderBy('sort_order')->orderBy('id')->value('id') ?? '');
+    }
 
     /** @return Collection<int, Show> */
     #[Computed]
     public function shows(): Collection
     {
-        return Show::withCount('looks')
+        return Show::with('layout')->withCount('looks')
             ->orderBy('name')
+            ->get();
+    }
+
+    /** @return Collection<int, Layout> */
+    #[Computed]
+    public function layouts(): Collection
+    {
+        return Layout::query()
+            ->withCount(['sections', 'textGroups'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
     }
 
     public function create(): void
     {
         $this->authorize(Access::BROADCASTS_MANAGE);
-        $this->validate();
+        $this->validate([
+            'name' => 'required|string|max:120',
+            'layoutId' => 'required|integer|exists:layouts,id',
+        ]);
+
+        $layout = Layout::query()->with('sections')->findOrFail($this->layoutId);
 
         $show = Show::create([
             'name' => $this->name,
-            'scheduled_for' => $this->scheduledFor ?: null,
+            'layout_id' => $layout->id,
         ]);
 
-        DefaultLayout::install($show);
+        DefaultLayout::install($show, $layout);
 
-        $this->reset('name', 'scheduledFor');
+        $this->reset('name');
+        $this->layoutId = (string) (Layout::query()->orderBy('sort_order')->orderBy('id')->value('id') ?? '');
         $this->creating = false;
         unset($this->shows);
 
@@ -65,7 +88,7 @@ class Index extends Component
 
         $copy = Show::create([
             'name' => $show->name.' (copy)',
-            'scheduled_for' => $show->scheduled_for,
+            'layout_id' => $show->layout_id,
         ]);
 
         DefaultLayout::copyFrom($show, $copy);

@@ -4,6 +4,7 @@ namespace App\Livewire\Shows;
 
 use App\Concerns\Toasts;
 use App\Models\Asset;
+use App\Models\Layout;
 use App\Models\Look;
 use App\Models\LookItem;
 use App\Models\Section;
@@ -59,8 +60,6 @@ class Board extends Component
     /** @var array<string, string> */
     public array $defaults = [];
 
-    public ?string $scheduledFor = null;
-
     public bool $layoutOpen = false;
 
     public bool $endpointsOpen = false;
@@ -75,11 +74,12 @@ class Board extends Component
      */
     public array $sectionEdits = [];
 
+    public string $newLayoutName = '';
+
     public function mount(Show $show): void
     {
-        $this->show = $show->load(['sections', 'textDefaults.textKey.group']);
-        $this->scheduledFor = $show->scheduled_for?->format('Y-m-d\TH:i');
-        $this->newTextKeyGroupId = TextGroup::query()->orderBy('sort_order')->value('id');
+        $this->show = $show->load(['sections', 'layout.textGroups.textKeys', 'textDefaults.textKey.group']);
+        $this->newTextKeyGroupId = $this->textGroups->first()?->id;
         $this->syncSectionEdits();
         $this->syncTextFromState();
     }
@@ -93,7 +93,7 @@ class Board extends Component
     #[Computed]
     public function textGroups(): Collection
     {
-        return TextGroup::catalog();
+        return TextGroup::catalog($this->show->layout);
     }
 
     #[Computed]
@@ -190,7 +190,7 @@ class Board extends Component
 
     public function assign(string $sectionKey, int $assetId, ShowStateManager $state, AssetScaler $scaler): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
 
         $section = $this->sections->firstWhere('key', $sectionKey);
         $asset = Asset::query()->findOrFail($assetId);
@@ -205,7 +205,7 @@ class Board extends Component
 
     public function clearSection(string $sectionKey, ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
         $state->clearSection($this->show, $sectionKey);
         $this->afterStateChange();
     }
@@ -213,14 +213,14 @@ class Board extends Component
     /** Selecting a cue only puts it on deck. Air does not move until Go Live. */
     public function arm(int $lookId, ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
         $state->arm($this->show, $lookId);
         $this->afterStateChange();
     }
 
     public function take(ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
         $look = $state->take($this->show);
 
         $this->afterStateChange();
@@ -232,7 +232,7 @@ class Board extends Component
 
     public function step(int $offset, ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
         $state->armAtOffset($this->show, $offset);
 
         $this->afterStateChange();
@@ -240,26 +240,16 @@ class Board extends Component
 
     public function resetBoard(ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TAKE);
         $state->reset($this->show);
         $this->afterStateChange();
 
         $this->toast(__('Board cleared.'));
     }
 
-    public function saveSchedule(): void
-    {
-        $this->authorize(Access::BOARD_RUN);
-        $this->validate(['scheduledFor' => 'nullable|date']);
-
-        $this->scheduledFor = $this->scheduledFor ?: null;
-        $this->show->update(['scheduled_for' => $this->scheduledFor]);
-        $this->show->refresh();
-    }
-
     public function saveText(int $textKeyId, ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TEXT);
         $textKey = $this->textKeys->firstWhere('id', $textKeyId);
 
         if (! $textKey) {
@@ -274,7 +264,7 @@ class Board extends Component
 
     public function revertText(int $textKeyId, ShowStateManager $state): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TEXT);
         $textKey = $this->textKeys->firstWhere('id', $textKeyId);
 
         if (! $textKey) {
@@ -286,37 +276,45 @@ class Board extends Component
     }
 
     /**
-     * Adds a field to the shared catalog. Every vMix box sees it immediately;
-     * only this box's live value and default start empty. The data source name
-     * is Group.key and is fixed from here.
+     * Adds a field to this box's layout. Other boxes on the same overlay type
+     * see it immediately; only this box's live value and default start empty.
+     * The data source name is Group.key and is fixed from here.
      */
     public function addTextKey(): void
     {
         $this->authorize(Access::CATALOG_EDIT);
         $this->validate([
             'newTextKey' => 'required|string|max:120',
-            'newTextKeyGroupId' => 'required|integer|exists:text_groups,id',
+            'newTextKeyGroupId' => 'required|integer',
         ]);
+
+        $group = $this->textGroups->firstWhere('id', (int) $this->newTextKeyGroupId);
+
+        if (! $group) {
+            $this->addError('newTextKeyGroupId', __('Pick a group on this layout.'));
+
+            return;
+        }
 
         $key = Str::snake(Str::ascii($this->newTextKey));
 
-        if ($key === '' || TextKey::where('group_id', $this->newTextKeyGroupId)->where('key', $key)->exists()) {
+        if ($key === '' || TextKey::where('group_id', $group->id)->where('key', $key)->exists()) {
             $this->addError('newTextKey', __('That key is already taken in this group.'));
 
             return;
         }
 
         $textKey = TextKey::create([
-            'group_id' => $this->newTextKeyGroupId,
+            'group_id' => $group->id,
             'key' => $key,
             'label' => $this->newTextKey,
-            'sort_order' => (int) TextKey::where('group_id', $this->newTextKeyGroupId)->max('sort_order') + 1,
+            'sort_order' => (int) TextKey::where('group_id', $group->id)->max('sort_order') + 1,
         ]);
 
         $this->reset('newTextKey');
         $this->refreshLayout();
 
-        $this->toast(__('Added :key to every broadcast.', ['key' => $textKey->fieldName()]));
+        $this->toast(__('Added :key to this layout.', ['key' => $textKey->fieldName()]));
     }
 
     public function addTextGroup(): void
@@ -324,28 +322,36 @@ class Board extends Component
         $this->authorize(Access::CATALOG_EDIT);
         $this->validate(['newTextGroup' => 'required|string|max:80']);
 
+        $layout = $this->show->layout;
+
+        if (! $layout) {
+            $this->addError('newTextGroup', __('This box has no layout to attach a group to.'));
+
+            return;
+        }
+
         $label = trim($this->newTextGroup);
         $key = preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $label) === 1
             ? $label
             : Str::studly(Str::ascii($label));
 
-        if ($key === '' || TextGroup::where('key', $key)->exists()) {
-            $this->addError('newTextGroup', __('That group is already taken.'));
+        if ($key === '' || $layout->textGroups()->where('key', $key)->exists()) {
+            $this->addError('newTextGroup', __('That group is already taken on this layout.'));
 
             return;
         }
 
-        $group = TextGroup::create([
+        $group = $layout->textGroups()->create([
             'key' => $key,
             'label' => $label,
-            'sort_order' => (int) TextGroup::max('sort_order') + 1,
+            'sort_order' => (int) $layout->textGroups()->max('sort_order') + 1,
         ]);
 
         $this->reset('newTextGroup');
         $this->newTextKeyGroupId = $group->id;
         $this->refreshLayout();
 
-        $this->toast(__('Added group :key. Fields will publish as :key.key.', ['key' => $key]));
+        $this->toast(__('Added group :key to this layout. Fields will publish as :key.key.', ['key' => $key]));
     }
 
     public function startTextRename(int $textKeyId): void
@@ -377,7 +383,7 @@ class Board extends Component
 
     public function saveTextDefault(int $textKeyId): void
     {
-        $this->authorize(Access::BOARD_RUN);
+        $this->authorize(Access::BOARD_TEXT);
         $textKey = $this->textKeys->firstWhere('id', $textKeyId);
 
         if (! $textKey) {
@@ -462,13 +468,10 @@ class Board extends Component
 
         $group->delete();
 
-        if ($this->newTextKeyGroupId === $groupId) {
-            $this->newTextKeyGroupId = TextGroup::query()->orderBy('sort_order')->value('id');
-        }
-
         $this->refreshLayout();
+        $this->newTextKeyGroupId = $this->textGroups->first()?->id;
 
-        $this->toast(__('Removed group :key from every broadcast.', ['key' => $group->key]));
+        $this->toast(__('Removed group :key from this layout.', ['key' => $group->key]));
     }
 
     public function deleteTextKey(int $textKeyId): void
@@ -484,12 +487,12 @@ class Board extends Component
 
         $this->refreshLayout();
 
-        $this->toast(__('Removed :key from every broadcast.', ['key' => $textKey->key]));
+        $this->toast(__('Removed :key from this layout.', ['key' => $textKey->key]));
     }
 
     public function addSection(): void
     {
-        $this->authorize(Access::BROADCASTS_MANAGE);
+        $this->authorize(Access::LAYOUTS_EDIT);
         $this->validate([
             'newSection.key' => ['required', 'regex:/^[A-Za-z][A-Za-z0-9_]*$/', 'max:60'],
             'newSection.label' => 'required|string|max:80',
@@ -531,7 +534,7 @@ class Board extends Component
 
     public function saveSection(int $sectionId, ShowStateManager $state, AssetScaler $scaler): void
     {
-        $this->authorize(Access::BROADCASTS_MANAGE);
+        $this->authorize(Access::LAYOUTS_EDIT);
 
         $section = $this->sections->firstWhere('id', $sectionId);
 
@@ -605,7 +608,7 @@ class Board extends Component
 
     public function deleteSection(int $sectionId, ShowStateManager $state): void
     {
-        $this->authorize(Access::BROADCASTS_MANAGE);
+        $this->authorize(Access::LAYOUTS_EDIT);
         $section = $this->sections->firstWhere('id', $sectionId);
 
         if (! $section) {
@@ -629,6 +632,19 @@ class Board extends Component
         $this->toast(__('Removed :key.', ['key' => $section->key]));
     }
 
+    public function saveAsLayout(): void
+    {
+        $this->authorize(Access::LAYOUTS_EDIT);
+        $this->validate([
+            'newLayoutName' => ['required', 'string', 'max:120'],
+        ]);
+
+        $layout = Layout::fromShow($this->show, $this->newLayoutName);
+        $this->reset('newLayoutName');
+
+        $this->toast(__('Saved layout :name.', ['name' => $layout->name]));
+    }
+
     protected function refreshLayout(): void
     {
         $this->reloadLayout();
@@ -637,7 +653,7 @@ class Board extends Component
 
     protected function reloadLayout(): void
     {
-        $this->show->load(['sections', 'textDefaults.textKey.group']);
+        $this->show->load(['sections', 'layout.textGroups.textKeys', 'textDefaults.textKey.group']);
         $this->syncSectionEdits();
 
         unset($this->textKeys, $this->textGroups, $this->sections, $this->onAir, $this->onDeckSlots, $this->looks);

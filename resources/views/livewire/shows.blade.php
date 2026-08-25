@@ -1,8 +1,8 @@
 <section class="w-full space-y-6">
-    <div class="flex items-start justify-between gap-4">
-        <div>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0 flex-1">
             <h1 class="text-2xl font-semibold tracking-tight">{{ __('Broadcasts') }}</h1>
-            <p class="mt-1 text-sm text-zinc-400">{{ __('One per vMix PC. The date is the night that box is covering. Text fields are shared; live values, defaults, sections and cues stay on this box.') }}</p>
+            <p class="mt-1 max-w-2xl text-sm text-zinc-400">{{ __('One per vMix PC. Pick a layout to copy its image slots and caption groups.') }}</p>
         </div>
 
         @can('broadcasts.manage')
@@ -32,8 +32,8 @@
 
                     <dl class="space-y-1 text-sm">
                         <div class="flex justify-between gap-2">
-                            <dt class="text-zinc-500">{{ __('Night') }}</dt>
-                            <dd>{{ $show->scheduled_for?->format('D j M, g:ia') ?? '—' }}</dd>
+                            <dt class="text-zinc-500">{{ __('Layout') }}</dt>
+                            <dd>{{ $show->layout?->name ?? '—' }}</dd>
                         </div>
                         <div class="flex justify-between gap-2">
                             <dt class="text-zinc-500">{{ __('Cues') }}</dt>
@@ -70,11 +70,15 @@
         <form wire:submit="create" class="space-y-5">
             <div>
                 <h2 class="text-lg font-semibold">{{ __('New broadcast') }}</h2>
-                <p class="mt-1 text-sm text-zinc-400">{{ __('A vMix PC such as GLSTV1. Text fields are already shared. This box gets its own sections, defaults and data source URLs.') }}</p>
+                <p class="mt-1 text-sm text-zinc-400">{{ __('A vMix PC such as GLSTV1. This box copies a layout for its image slots and caption groups, then keeps its own live values, defaults and data source URLs.') }}</p>
             </div>
 
             <x-ui.input wire:model="name" :label="__('Station')" placeholder="GLSTV1" required />
-            <x-ui.input wire:model="scheduledFor" :label="__('Night')" type="datetime-local" />
+            <x-ui.select wire:model="layoutId" :label="__('Layout')">
+                @foreach ($this->layouts as $layout)
+                    <option value="{{ $layout->id }}">{{ $layout->name }} · {{ trans_choice(':count slot|:count slots', $layout->sections_count, ['count' => $layout->sections_count]) }}{{ $layout->text_groups_count ? ' · '.trans_choice(':count group|:count groups', $layout->text_groups_count, ['count' => $layout->text_groups_count]) : '' }}</option>
+                @endforeach
+            </x-ui.select>
 
             <div class="flex justify-end gap-2">
                 <x-ui.btn variant="ghost" type="button" wire:click="$set('creating', false)">{{ __('Cancel') }}</x-ui.btn>

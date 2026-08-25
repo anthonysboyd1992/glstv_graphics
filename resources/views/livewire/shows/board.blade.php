@@ -2,9 +2,10 @@
     @php
         $liveLook = $this->looks->firstWhere('id', $show->active_look_id);
         $onDeckLook = $this->looks->firstWhere('id', $show->preview_look_id);
-        $canRun = auth()->user()->can('board.run');
+        $canTake = auth()->user()->can('board.take');
+        $canText = auth()->user()->can('board.text');
         $canCatalog = auth()->user()->can('catalog.edit');
-        $canLayout = auth()->user()->can('broadcasts.manage');
+        $canLayout = auth()->user()->can('layouts.edit');
         $canCues = auth()->user()->can('cues.edit');
     @endphp
 
@@ -14,22 +15,13 @@
                 <h1 class="text-2xl font-semibold tracking-tight">{{ $show->name }}</h1>
                 <x-ui.badge :tone="$show->status === 'live' ? 'live' : 'zinc'">{{ ucfirst($show->status) }}</x-ui.badge>
             </div>
-            <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
-                <input
-                    type="datetime-local"
-                    wire:model="scheduledFor"
-                    @if ($canRun) wire:change="saveSchedule" @else readonly @endif
-                    class="rounded-md border-0 bg-transparent px-0 py-0 text-sm text-zinc-400 focus:ring-0"
-                />
-                <span>&middot;</span>
-                <span class="font-mono text-xs">{{ $show->uuid }}</span>
-            </div>
+            <p class="mt-1 font-mono text-xs text-zinc-500">{{ $show->uuid }}</p>
         </div>
 
         <div class="flex items-center gap-2">
             <x-ui.btn size="sm" icon="squares-2x2" wire:click="$set('layoutOpen', true)">{{ __('Sections') }}</x-ui.btn>
             <x-ui.btn size="sm" icon="link" wire:click="$set('endpointsOpen', true)">{{ __('Data source URLs') }}</x-ui.btn>
-            @if ($canRun)
+            @if ($canTake)
                 <x-ui.btn
                     size="sm"
                     variant="ghost"
@@ -50,7 +42,7 @@
                     wire:key="air-{{ $section->key }}-{{ $this->onAir[$section->key]?->id ?? 'empty' }}"
                     :section="$section"
                     :asset="$this->onAir[$section->key] ?? null"
-                    :clearable="$canRun"
+                    :clearable="$canTake"
                 >
                     <x-slot:thumb>
                         @if ($this->onAir[$section->key] ?? null)
@@ -151,7 +143,7 @@
                     <p class="mt-1 truncate text-base font-semibold">{{ $onDeckLook?->name ?? __('Select a cue') }}</p>
                 </a>
                 <div class="flex items-stretch gap-2">
-                    @if ($canRun)
+                    @if ($canTake)
                         <x-ui.btn icon="chevron-up" wire:click="step(-1)" :title="__('Previous on deck')" class="h-auto" />
                         <x-ui.btn icon="chevron-down" wire:click="step(1)" :title="__('Next on deck')" class="h-auto" />
                         <button
@@ -174,14 +166,14 @@
 
                     <button
                         type="button"
-                        @if ($canRun) wire:click="arm({{ $look->id }})" @endif
+                        @if ($canTake) wire:click="arm({{ $look->id }})" @endif
                         @class([
                             'flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-2.5 text-left last:border-0',
                             'border-l-4 border-l-red-500 bg-red-950/40' => $isLive,
                             'border-l-4 border-l-amber-400 bg-amber-950/20' => $isOnDeck && ! $isLive,
-                            'border-l-4 border-l-transparent hover:bg-zinc-900' => ! $isLive && ! $isOnDeck && $canRun,
-                            'border-l-4 border-l-transparent' => ! $isLive && ! $isOnDeck && ! $canRun,
-                            'cursor-default' => ! $canRun,
+                            'border-l-4 border-l-transparent hover:bg-zinc-900' => ! $isLive && ! $isOnDeck && $canTake,
+                            'border-l-4 border-l-transparent' => ! $isLive && ! $isOnDeck && ! $canTake,
+                            'cursor-default' => ! $canTake,
                         ])
                     >
                         <span @class([
@@ -214,11 +206,18 @@
     </div>
 
     <div class="space-y-3">
-        <div>
-            <h2 class="text-lg font-semibold">{{ __('Text') }}</h2>
-            <p class="text-sm text-zinc-400">
-                {{ __('Fields are shared by every vMix box and publish as Group.key, e.g. Rundown.now_racing. Live values and defaults on this table are this box only.') }}
-            </p>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold">{{ __('Text') }}</h2>
+                <p class="text-sm text-zinc-400">
+                    {{ __('Fields belong to this box\'s layout and publish as Group.key, e.g. Rundown.now_racing. Other boxes on the same layout see them; live values and defaults on this table are this box only.') }}
+                </p>
+            </div>
+            @if ($canLayout && $show->layout)
+                <x-ui.btn size="sm" :href="route('layouts.edit', $show->layout)" wire:navigate>
+                    {{ __('Edit captions') }}
+                </x-ui.btn>
+            @endif
         </div>
 
         <div class="overflow-x-auto rounded-xl border border-zinc-800">
@@ -232,28 +231,29 @@
                 </thead>
                 <tbody>
                     @forelse ($this->textGroups as $group)
-                        <tr class="bg-zinc-900/80">
-                            <td colspan="3" class="border-b border-zinc-800 px-3 py-2">
+                        <tr class="bg-black">
+                            <td colspan="3" class="border-b border-zinc-700 border-l-4 border-l-zinc-300 px-3 py-2">
                                 <div class="flex items-center gap-2">
-                                    <span class="font-medium">{{ $group->label }}</span>
-                                    <code class="text-[10px] text-zinc-500">{{ $group->key }}.*</code>
+                                    <span class="font-medium text-white">{{ $group->label }}</span>
+                                    <x-ui.field-name :group="$group->key" />
                                     @if ($canCatalog)
                                         <x-ui.btn size="xs" variant="ghost" icon="chevron-up" :disabled="$loop->first" wire:click="moveTextGroup({{ $group->id }}, -1)" :title="__('Move group up')" />
                                         <x-ui.btn size="xs" variant="ghost" icon="chevron-down" :disabled="$loop->last" wire:click="moveTextGroup({{ $group->id }}, 1)" :title="__('Move group down')" />
-                                        <x-ui.btn size="xs" variant="danger" icon="trash" wire:click="deleteTextGroup({{ $group->id }})" wire:confirm="{{ __('Remove this group and every field in it from every broadcast?') }}" :title="__('Remove group')" />
+                                        <x-ui.btn size="xs" variant="danger" icon="trash" wire:click="deleteTextGroup({{ $group->id }})" wire:confirm="{{ __('Remove this group and every field in it from this layout? Every box using this overlay type loses these fields.') }}" :title="__('Remove group')" />
                                     @endif
                                 </div>
                             </td>
                         </tr>
                         @forelse ($group->textKeys as $textKey)
-                            <tr class="hover:bg-zinc-900/50">
-                                <td class="border-b border-r border-zinc-800 px-3 py-2 align-top">
+                            <tr class="bg-zinc-800/60 hover:bg-zinc-800">
+                                <td class="border-b border-r border-zinc-800 border-l-4 border-l-zinc-600 px-3 py-2 align-top">
                                     @if ($canCatalog && $renamingTextKeyId === $textKey->id)
                                         <x-ui.input
                                             wire:model="textKeyLabel"
                                             wire:keydown.enter="renameTextKey"
                                             wire:keydown.escape="cancelTextRename"
                                             wire:blur="renameTextKey"
+                                            accent="text"
                                             autofocus
                                         />
                                     @elseif ($canCatalog)
@@ -264,16 +264,16 @@
                                         <span class="block truncate font-medium">{{ $textKey->label }}</span>
                                     @endif
                                     <div class="mt-0.5 flex items-center gap-0.5">
-                                        <code class="mr-1 text-[10px] text-zinc-500">{{ $textKey->fieldName() }}</code>
+                                        <x-ui.field-name class="mr-1" :group="$group->key" :key="$textKey->key" />
                                         @if ($canCatalog)
                                             <x-ui.btn size="xs" variant="ghost" icon="chevron-up" :disabled="$loop->first" wire:click="moveTextKey({{ $textKey->id }}, -1)" :title="__('Move up')" />
                                             <x-ui.btn size="xs" variant="ghost" icon="chevron-down" :disabled="$loop->last" wire:click="moveTextKey({{ $textKey->id }}, 1)" :title="__('Move down')" />
                                         @endif
-                                        @if ($canRun)
+                                        @if ($canText)
                                             <x-ui.btn size="xs" variant="ghost" icon="arrow-uturn-left" wire:click="revertText({{ $textKey->id }})" :title="__('Revert to default')" />
                                         @endif
                                         @if ($canCatalog)
-                                            <x-ui.btn size="xs" variant="danger" icon="trash" wire:click="deleteTextKey({{ $textKey->id }})" wire:confirm="{{ __('Remove this field from every broadcast? Live values and defaults on each box are deleted with it.') }}" :title="__('Remove field')" />
+                                            <x-ui.btn size="xs" variant="danger" icon="trash" wire:click="deleteTextKey({{ $textKey->id }})" wire:confirm="{{ __('Remove this field from this layout? Live values and defaults on each box using it are deleted with it.') }}" :title="__('Remove field')" />
                                         @endif
                                     </div>
                                 </td>
@@ -282,12 +282,12 @@
                                         <input
                                             type="text"
                                             wire:model="text.{{ $textKey->id }}"
-                                            @if ($canRun) wire:keydown.enter="saveText({{ $textKey->id }})" @endif
+                                            @if ($canText) wire:keydown.enter="saveText({{ $textKey->id }})" @endif
                                             placeholder="{{ ($defaults[$textKey->id] ?? '') ?: __('Empty') }}"
-                                            @readonly(! $canRun)
+                                            @readonly(! $canText)
                                             class="w-full rounded-md border-0 bg-transparent px-2 py-1.5 text-sm placeholder-zinc-500 focus:bg-zinc-900 focus:ring-1 focus:ring-zinc-600"
                                         />
-                                        @if ($canRun)
+                                        @if ($canText)
                                             <x-ui.btn size="xs" variant="ghost" icon="check" wire:click="saveText({{ $textKey->id }})" :title="__('Put this on air')" />
                                         @endif
                                     </div>
@@ -296,9 +296,9 @@
                                     <input
                                         type="text"
                                         wire:model="defaults.{{ $textKey->id }}"
-                                        @if ($canRun) wire:change="saveTextDefault({{ $textKey->id }})" @endif
+                                        @if ($canText) wire:change="saveTextDefault({{ $textKey->id }})" @endif
                                         placeholder="{{ __('Empty') }}"
-                                        @readonly(! $canRun)
+                                        @readonly(! $canText)
                                         class="w-full rounded-md border-0 bg-transparent px-2 py-1.5 text-sm placeholder-zinc-500 focus:bg-zinc-900 focus:ring-1 focus:ring-zinc-600"
                                     />
                                 </td>
@@ -393,14 +393,14 @@
                                     <td class="px-3 py-2 text-center">
                                         <button
                                             type="button"
-                                            @if ($canRun) wire:click="assign('{{ $section->key }}', {{ $asset->id }})" @endif
-                                            @disabled(! $canRun)
+                                            @if ($canTake) wire:click="assign('{{ $section->key }}', {{ $asset->id }})" @endif
+                                            @disabled(! $canTake)
                                             @class([
                                                 'mx-auto flex h-7 w-7 items-center justify-center rounded-full border transition',
                                                 'border-red-500 bg-red-500 text-white' => $isLive,
-                                                'border-dashed border-amber-400 text-amber-400 hover:bg-amber-950/30' => ! $isLive && $needsFit && $canRun,
-                                                'border-zinc-600 hover:border-red-400 hover:bg-red-950/40' => ! $isLive && ! $needsFit && $canRun,
-                                                'border-zinc-700 text-zinc-600' => ! $isLive && ! $canRun,
+                                                'border-dashed border-amber-400 text-amber-400 hover:bg-amber-950/30' => ! $isLive && $needsFit && $canTake,
+                                                'border-zinc-600 hover:border-red-400 hover:bg-red-950/40' => ! $isLive && ! $needsFit && $canTake,
+                                                'border-zinc-700 text-zinc-600' => ! $isLive && ! $canTake,
                                             ])
                                             title="{{ $isLive
                                                 ? $section->label
@@ -433,6 +433,12 @@
             <div>
                 <h2 class="text-lg font-semibold">{{ __('Sections') }}</h2>
                 <p class="mt-1 text-sm text-zinc-400">{{ __('Image slots for this broadcast only. Saving a new size refits every picture already in that slot, on air and in cues.') }}</p>
+                @can('layouts.edit')
+                    <p class="mt-1 text-sm text-zinc-500">
+                        <a href="{{ route('layouts.index') }}" wire:navigate class="text-zinc-300 underline-offset-2 hover:underline">{{ __('Layouts') }}</a>
+                        {{ __('are the reusable sets. Save this box as a new one if you want another broadcast type.') }}
+                    </p>
+                @endcan
             </div>
             @if ($canLayout)
                 <div class="hidden gap-2 text-xs font-medium uppercase tracking-wide text-zinc-500 sm:grid sm:grid-cols-5">
@@ -493,6 +499,12 @@
                 <div class="flex items-end">
                     <x-ui.btn type="submit" size="sm" icon="plus">{{ __('Add') }}</x-ui.btn>
                 </div>
+            </form>
+            <form wire:submit="saveAsLayout" class="flex flex-wrap items-end gap-2 border-t border-zinc-800 pt-4">
+                <div class="min-w-48 flex-1">
+                    <x-ui.input wire:model="newLayoutName" :label="__('Save as layout')" placeholder="Studio" />
+                </div>
+                <x-ui.btn type="submit" size="sm">{{ __('Save layout') }}</x-ui.btn>
             </form>
             @endif
         </div>

@@ -7,7 +7,7 @@
 ])
 
 @php
-    $base = 'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition disabled:pointer-events-none disabled:opacity-40';
+    $base = 'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition disabled:pointer-events-none disabled:opacity-40';
 
     $variants = [
         'primary' => 'bg-white text-zinc-950 hover:bg-zinc-200',

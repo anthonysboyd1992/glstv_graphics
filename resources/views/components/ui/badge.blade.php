@@ -6,8 +6,11 @@
     $tones = [
         'live' => 'bg-red-600 text-white',
         'deck' => 'bg-amber-400 text-amber-950',
-        'zinc' => 'bg-zinc-700 text-zinc-200',
-        'red' => 'bg-red-950 text-red-300 ring-1 ring-red-800',
+        'zinc' => 'bg-zinc-800 text-zinc-300 ring-1 ring-zinc-700',
+        'red' => 'bg-zinc-950 text-red-300 ring-1 ring-red-800',
+        'slot' => 'bg-zinc-950 text-zinc-400 ring-1 ring-zinc-600',
+        'group' => 'bg-zinc-400 text-zinc-950 ring-1 ring-zinc-400',
+        'text' => 'bg-black text-zinc-300 ring-1 ring-zinc-500',
     ];
 @endphp
 

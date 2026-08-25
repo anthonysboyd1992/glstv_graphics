@@ -34,12 +34,58 @@ class CuesTest extends TestCase
     public function test_a_new_cue_starts_with_every_cell_blank(): void
     {
         Livewire::test(Cues::class, ['show' => $this->show])
-            ->set('newName', 'GLSS Trophy Dash')
+            ->set('addCount', 1)
             ->call('add');
 
-        $cue = $this->show->looks()->where('name', 'GLSS Trophy Dash')->firstOrFail();
+        $cue = $this->show->looks()->where('name', 'Cue 1')->firstOrFail();
 
         $this->assertSame(0, $cue->items()->count());
+    }
+
+    public function test_adding_a_count_appends_that_many_blank_cues(): void
+    {
+        $after = (int) $this->show->looks()->max('sort_order');
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('addCount', 3)
+            ->call('add')
+            ->assertSet('addCount', 1);
+
+        $added = $this->show->looks()->where('sort_order', '>', $after)->orderBy('sort_order')->get();
+
+        $this->assertSame(['Cue 1', 'Cue 2', 'Cue 3'], $added->pluck('name')->all());
+        $this->assertSame([$after + 1, $after + 2, $after + 3], $added->pluck('sort_order')->all());
+        $this->assertSame([0, 0, 0], $added->map(fn ($cue) => $cue->items()->count())->all());
+    }
+
+    public function test_cue_numbers_continue_from_the_highest_cue_n(): void
+    {
+        $this->show->looks()->create(['name' => 'Cue 4', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('addCount', 2)
+            ->call('add');
+
+        $this->assertNotNull($this->show->looks()->where('name', 'Cue 5')->first());
+        $this->assertNotNull($this->show->looks()->where('name', 'Cue 6')->first());
+        $this->assertNull($this->show->looks()->where('name', 'Cue 1')->first());
+    }
+
+    public function test_a_count_outside_the_allowed_range_creates_nothing(): void
+    {
+        $before = $this->show->looks()->count();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('addCount', 0)
+            ->call('add')
+            ->assertHasErrors('addCount');
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('addCount', 101)
+            ->call('add')
+            ->assertHasErrors('addCount');
+
+        $this->assertSame($before, $this->show->looks()->count());
     }
 
     public function test_choosing_an_asset_fills_one_cell_and_leaves_the_rest_blank(): void
@@ -166,6 +212,65 @@ class CuesTest extends TestCase
         $this->assertNull($this->show->active_look_id);
         $this->assertNull($this->show->preview_look_id);
         $this->assertNull($this->show->looks()->find($cue->id));
+    }
+
+    public function test_bulk_delete_removes_only_the_selected_cues(): void
+    {
+        $cues = $this->show->looks()->orderBy('sort_order')->get();
+        $keep = $cues->skip(2)->pluck('id');
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('selected', [$cues[0]->id, $cues[1]->id])
+            ->call('deleteSelected')
+            ->assertSet('selected', []);
+
+        $this->assertSame($keep->all(), $this->show->looks()->orderBy('sort_order')->pluck('id')->all());
+    }
+
+    public function test_bulk_delete_of_live_and_on_deck_cues_clears_the_board(): void
+    {
+        $cues = $this->show->looks()->orderBy('sort_order')->get();
+        $this->show->forceFill([
+            'active_look_id' => $cues[0]->id,
+            'preview_look_id' => $cues[1]->id,
+        ])->save();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('selected', [$cues[0]->id, $cues[1]->id])
+            ->call('deleteSelected');
+
+        $this->show->refresh();
+
+        $this->assertNull($this->show->active_look_id);
+        $this->assertNull($this->show->preview_look_id);
+        $this->assertNull($this->show->looks()->find($cues[0]->id));
+        $this->assertNull($this->show->looks()->find($cues[1]->id));
+        $this->assertNotNull($this->show->looks()->find($cues[2]->id));
+    }
+
+    public function test_select_all_toggles_every_cue_on_this_box(): void
+    {
+        $ids = $this->show->looks()->orderBy('sort_order')->pluck('id')->map(fn ($id) => (string) $id)->all();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('toggleSelectAll')
+            ->assertSet('selected', $ids)
+            ->call('toggleSelectAll')
+            ->assertSet('selected', []);
+    }
+
+    public function test_bulk_delete_ignores_cues_on_another_box(): void
+    {
+        $other = Show::query()->whereKeyNot($this->show->id)->firstOrFail();
+        $foreign = $other->looks()->firstOrFail();
+        $local = $this->show->looks()->firstOrFail();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('selected', [$local->id, $foreign->id])
+            ->call('deleteSelected');
+
+        $this->assertNull($this->show->looks()->find($local->id));
+        $this->assertNotNull($other->looks()->find($foreign->id));
     }
 
     protected function storeAsset(string $name, int $width, int $height): Asset

@@ -2,13 +2,12 @@
 
 namespace App\Services\Shows;
 
+use App\Models\Layout;
 use App\Models\Show;
-use App\Models\TextGroup;
-use App\Models\TextKey;
 
 /**
- * The layout a new vMix box starts with. Sections are copied onto the
- * broadcast; text groups and keys are a shared catalog every box already sees.
+ * Starter catalogs a new vMix box starts with. Layouts own image slots and
+ * caption groups; live values stay on the broadcast.
  */
 class DefaultLayout
 {
@@ -62,41 +61,81 @@ class DefaultLayout
         ];
     }
 
-    public static function install(Show $show): void
+    public static function install(Show $show, ?Layout $layout = null): void
     {
+        $layout ??= self::ensureLayouts();
         self::ensureTextKeys();
 
-        foreach (self::sections() as $index => $section) {
-            $show->sections()->create($section + ['sort_order' => $index]);
+        if (! $show->layout_id) {
+            $show->forceFill(['layout_id' => $layout->id])->save();
         }
 
-        self::installDefaults($show);
+        if ($show->sections()->doesntExist()) {
+            $layout->copyOnto($show);
+        }
+
+        self::installDefaults($show->fresh(['layout.textGroups.textKeys']));
     }
 
     /**
-     * Makes sure the shared catalog exists. Safe to call on every new box;
-     * existing keys are left alone so a label someone renamed is not overwritten.
+     * The starter Dirt Track overlay, created once. Later layouts are built
+     * in the UI; this only fills an empty catalog so a new box always has slots.
+     */
+    public static function ensureLayouts(): Layout
+    {
+        $existing = Layout::query()->orderBy('sort_order')->orderBy('id')->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $layout = Layout::query()->create([
+            'name' => 'Dirt Track',
+            'slug' => 'dirt-track',
+            'description' => 'Score bug, corners, lower third and full frame.',
+            'sort_order' => 0,
+        ]);
+
+        foreach (self::sections() as $index => $section) {
+            $layout->sections()->create($section + ['sort_order' => $index]);
+        }
+
+        return $layout->load('sections');
+    }
+
+    /**
+     * Makes sure Dirt Track still has its starter caption groups. Safe to call
+     * on every new box; existing keys are left alone so a renamed label is not
+     * overwritten. Other layouts keep whatever catalog was built for them.
      */
     public static function ensureTextKeys(): void
+    {
+        $layout = Layout::query()->where('slug', 'dirt-track')->first()
+            ?? self::ensureLayouts();
+
+        self::seedTextCatalog($layout);
+    }
+
+    public static function seedTextCatalog(Layout $layout): void
     {
         $groups = [];
 
         foreach (self::textGroups() as $index => $group) {
-            $groups[$group['key']] = TextGroup::firstOrCreate(
+            $groups[$group['key']] = $layout->textGroups()->firstOrCreate(
                 ['key' => $group['key']],
                 ['label' => $group['label'], 'sort_order' => $index],
             );
         }
 
         foreach (self::textKeys() as $index => $key) {
-            $group = $groups[$key['group']] ?? TextGroup::where('key', $key['group'])->first();
+            $group = $groups[$key['group']] ?? $layout->textGroups()->where('key', $key['group'])->first();
 
             if (! $group) {
                 continue;
             }
 
-            TextKey::firstOrCreate(
-                ['group_id' => $group->id, 'key' => $key['key']],
+            $group->textKeys()->firstOrCreate(
+                ['key' => $key['key']],
                 [
                     'label' => $key['label'],
                     'description' => $key['description'],
@@ -110,7 +149,7 @@ class DefaultLayout
     {
         $suggestions = collect(self::textKeys())->keyBy(fn (array $key) => $key['group'].'.'.$key['key']);
 
-        foreach (TextKey::catalog() as $textKey) {
+        foreach ($show->catalogTextKeys() as $textKey) {
             $show->textDefaults()->firstOrCreate(
                 ['text_key_id' => $textKey->id],
                 ['default_value' => $suggestions[$textKey->fieldName()]['default_value'] ?? ''],
@@ -120,7 +159,9 @@ class DefaultLayout
 
     public static function copyFrom(Show $source, Show $copy): void
     {
-        self::ensureTextKeys();
+        if ($source->layout_id && ! $copy->layout_id) {
+            $copy->forceFill(['layout_id' => $source->layout_id])->save();
+        }
 
         foreach ($source->sections as $section) {
             $copy->sections()->create($section->only(

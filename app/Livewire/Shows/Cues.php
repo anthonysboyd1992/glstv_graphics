@@ -12,7 +12,6 @@ use App\Support\Access;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 /**
@@ -35,13 +34,15 @@ class Cues extends Component
 
     public Show $show;
 
-    #[Validate('required|string|max:120')]
-    public string $newName = '';
+    public int $addCount = 1;
 
     /** Cue whose name is being edited inline. */
     public ?int $renamingId = null;
 
     public string $renameValue = '';
+
+    /** @var list<int|string> */
+    public array $selected = [];
 
     public function mount(Show $show): void
     {
@@ -105,15 +106,35 @@ class Cues extends Component
     public function add(): void
     {
         $this->authorize(Access::CUES_EDIT);
-        $this->validateOnly('newName');
-
-        $this->show->looks()->create([
-            'name' => $this->newName,
-            'sort_order' => (int) $this->show->looks()->max('sort_order') + 1,
+        $this->validate([
+            'addCount' => 'required|integer|min:1|max:100',
         ]);
 
-        $this->reset('newName');
+        $sort = (int) $this->show->looks()->max('sort_order');
+        $next = $this->nextCueNumber();
+
+        for ($i = 0; $i < $this->addCount; $i++) {
+            $this->show->looks()->create([
+                'name' => 'Cue '.($next + $i),
+                'sort_order' => ++$sort,
+            ]);
+        }
+
+        $count = $this->addCount;
+        $this->addCount = 1;
         $this->refreshCues();
+
+        $this->toast(trans_choice(':count cue added.|:count cues added.', $count, ['count' => $count]));
+    }
+
+    protected function nextCueNumber(): int
+    {
+        $highest = $this->show->looks()
+            ->pluck('name')
+            ->map(fn (string $name) => preg_match('/^Cue (\d+)$/', $name, $match) ? (int) $match[1] : 0)
+            ->max();
+
+        return (int) $highest + 1;
     }
 
     /**
@@ -229,17 +250,87 @@ class Cues extends Component
     public function delete(int $cueId): void
     {
         $this->authorize(Access::CUES_EDIT);
-        $this->show->looks()->whereKey($cueId)->delete();
+        $this->dropCues([$cueId]);
+    }
 
-        // A deleted cue must not stay on deck or reported as live.
+    public function deleteSelected(): void
+    {
+        $this->authorize(Access::CUES_EDIT);
+        $this->dropCues($this->selectedIds());
+    }
+
+    public function toggleSelectAll(): void
+    {
+        $this->authorize(Access::CUES_EDIT);
+
+        $selecting = ! $this->allSelected;
+
+        $this->selected = $selecting
+            ? $this->cues->pluck('id')->map(fn ($id) => (string) $id)->all()
+            : [];
+
+        unset($this->selectedCount, $this->allSelected);
+    }
+
+    #[Computed]
+    public function selectedCount(): int
+    {
+        return count(array_intersect($this->cues->pluck('id')->map(fn ($id) => (int) $id)->all(), $this->selectedIds()));
+    }
+
+    #[Computed]
+    public function allSelected(): bool
+    {
+        $ids = $this->cues->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return $ids !== [] && count($ids) === count(array_intersect($ids, $this->selectedIds()));
+    }
+
+    /**
+     * Drops cues on this box only. A deleted cue must not stay on deck or
+     * reported as live.
+     *
+     * @param  list<int>  $ids
+     */
+    protected function dropCues(array $ids): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ids = $this->show->looks()->whereKey($ids)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        if ($ids === []) {
+            return;
+        }
+
+        $this->show->looks()->whereKey($ids)->delete();
+
+        $active = $this->show->active_look_id;
+        $preview = $this->show->preview_look_id;
+
         $this->show->forceFill([
-            'active_look_id' => $this->show->active_look_id === $cueId ? null : $this->show->active_look_id,
-            'preview_look_id' => $this->show->preview_look_id === $cueId ? null : $this->show->preview_look_id,
+            'active_look_id' => $active !== null && in_array((int) $active, $ids, true) ? null : $active,
+            'preview_look_id' => $preview !== null && in_array((int) $preview, $ids, true) ? null : $preview,
         ])->save();
+
+        $this->selected = [];
+
+        if ($this->renamingId && in_array($this->renamingId, $ids, true)) {
+            $this->reset('renamingId', 'renameValue');
+        }
 
         $this->refreshCues();
 
-        $this->toast(__('Cue deleted.'));
+        $this->toast(trans_choice(':count cue deleted.|:count cues deleted.', count($ids), ['count' => count($ids)]));
+    }
+
+    /** @return list<int> */
+    protected function selectedIds(): array
+    {
+        return collect($this->selected)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     protected function sizedAssetId(int $assetId, string $sectionKey, AssetScaler $scaler): int
@@ -254,6 +345,6 @@ class Cues extends Component
 
     protected function refreshCues(): void
     {
-        unset($this->cues, $this->cells);
+        unset($this->cues, $this->cells, $this->selectedCount, $this->allSelected);
     }
 }

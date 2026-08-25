@@ -8,11 +8,22 @@
             </p>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-end gap-2">
             @if ($canEdit)
-                <form wire:submit="add" class="flex items-center gap-2">
-                    <x-ui.input wire:model="newName" :placeholder="__('GLSS Heat 1')" class="w-48" />
-                    <x-ui.btn type="submit" size="sm" variant="primary" icon="plus">{{ __('Add cue') }}</x-ui.btn>
+                <form wire:submit="add" class="flex items-end gap-2">
+                    <div class="w-24">
+                        <x-ui.input
+                            wire:model="addCount"
+                            type="number"
+                            min="1"
+                            max="100"
+                            :label="__('How many')"
+                        />
+                        @error('addCount')
+                            <p class="mt-1 text-sm text-red-400">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <x-ui.btn type="submit" size="sm" variant="primary" icon="plus">{{ __('Add cues') }}</x-ui.btn>
                 </form>
             @endif
             <x-ui.btn size="sm" icon="arrow-left" :href="route('shows.board', $show)" wire:navigate>
@@ -23,15 +34,49 @@
 
     @if ($this->cues->isEmpty())
         <x-ui.empty icon="table-cells" :title="__('No cues yet')">
-            {{ __('Add one above, then fill in only the cells that change. Names are free-form, so use whatever you call it on the night.') }}
+            {{ __('Set how many above, then fill in only the cells that change. Click a name to rename it.') }}
         </x-ui.empty>
     @else
+        @if ($canEdit && $this->selectedCount > 0)
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2">
+                <p class="text-sm text-zinc-300">
+                    {{ trans_choice(':count cue selected|:count cues selected', $this->selectedCount, ['count' => $this->selectedCount]) }}
+                </p>
+                <div class="flex items-center gap-2">
+                    <x-ui.btn size="sm" variant="ghost" wire:click="$set('selected', [])">{{ __('Clear') }}</x-ui.btn>
+                    <x-ui.btn
+                        size="sm"
+                        variant="danger"
+                        icon="trash"
+                        wire:click="deleteSelected"
+                        wire:confirm="{{ trans_choice('Delete this cue?|Delete these :count cues?', $this->selectedCount, ['count' => $this->selectedCount]) }}"
+                    >
+                        {{ __('Delete selected') }}
+                    </x-ui.btn>
+                </div>
+            </div>
+        @endif
+
         <div class="overflow-x-auto rounded-xl border border-zinc-800">
             <table class="min-w-full border-collapse text-sm">
                 <thead>
                     <tr class="bg-zinc-900">
                         <th class="sticky left-0 z-20 min-w-56 border-b border-r border-zinc-800 bg-zinc-900 px-3 py-2 text-left font-medium">
-                            {{ __('Cue') }}
+                            <div class="flex items-center gap-2">
+                                @if ($canEdit)
+                                    <input
+                                        type="checkbox"
+                                        class="size-4 rounded border-zinc-600 bg-zinc-900 text-white focus:ring-zinc-500"
+                                        wire:key="select-all-{{ $this->allSelected ? 'all' : ($this->selectedCount > 0 ? 'some' : 'none') }}"
+                                        wire:click.prevent="toggleSelectAll"
+                                        @checked($this->allSelected)
+                                        x-data
+                                        x-effect="$el.indeterminate = {{ $this->selectedCount > 0 && ! $this->allSelected ? 'true' : 'false' }}"
+                                        aria-label="{{ __('Select all cues') }}"
+                                    />
+                                @endif
+                                {{ __('Cue') }}
+                            </div>
                         </th>
                         @foreach ($this->sectionDefs as $section)
                             <th class="min-w-44 border-b border-r border-zinc-800 px-3 py-2 text-left font-medium last:border-r-0">
@@ -57,6 +102,15 @@
                                 'bg-zinc-950' => ! $isLive && ! $isOnDeck,
                             ])>
                                 <div class="flex items-start gap-2">
+                                    @if ($canEdit)
+                                        <input
+                                            type="checkbox"
+                                            value="{{ $cue->id }}"
+                                            wire:model.live="selected"
+                                            class="mt-1 size-4 shrink-0 rounded border-zinc-600 bg-zinc-900 text-white focus:ring-zinc-500"
+                                            aria-label="{{ __('Select :name', ['name' => $cue->name]) }}"
+                                        />
+                                    @endif
                                     <span class="w-5 shrink-0 pt-1 text-xs tabular-nums text-zinc-500">{{ $loop->iteration }}</span>
                                     <div class="min-w-0 flex-1">
                                         @if ($canEdit && $renamingId === $cue->id)

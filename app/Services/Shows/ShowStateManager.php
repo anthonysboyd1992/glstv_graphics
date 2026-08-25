@@ -77,6 +77,30 @@ class ShowStateManager
         return $this->persist($show, $state);
     }
 
+    public function renameTextField(Show $show, string $from, string $to): Show
+    {
+        if ($from === $to) {
+            return $show;
+        }
+
+        $state = $this->normalise($show->current_state);
+
+        if (array_key_exists($from, $state['text'])) {
+            $state['text'][$to] = $state['text'][$from];
+            unset($state['text'][$from]);
+        }
+
+        return $this->persist($show, $state);
+    }
+
+    public function dropTextField(Show $show, string $key): Show
+    {
+        $state = $this->normalise($show->current_state);
+        unset($state['text'][$key]);
+
+        return $this->persist($show, $state);
+    }
+
     /**
      * Apply a cue. Sections the cue does not mention are deliberately left
      * alone, which is what keeps "Heat 2" a one-picture change rather than a

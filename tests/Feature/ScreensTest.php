@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Layout;
 use App\Models\Show;
 use App\Models\User;
 use Database\Seeders\DirtTrackSeeder;
@@ -30,6 +31,8 @@ class ScreensTest extends TestCase
             route('shows.index'),
             route('shows.board', $this->show),
             route('shows.cues', $this->show),
+            route('layouts.index'),
+            route('layouts.edit', Layout::query()->firstOrFail()),
             route('assets.library'),
             route('users.index'),
         ];

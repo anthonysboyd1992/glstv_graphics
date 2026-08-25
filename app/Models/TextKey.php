@@ -9,8 +9,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 
 /**
- * A caption field shared by every vMix box. The data source name is Group.key
- * and does not change; live values and defaults are per broadcast.
+ * A caption field on a layout. The data source name is Group.key and does not
+ * change; live values and defaults are per broadcast. Boxes on the same layout
+ * share the field; other overlay types do not.
  *
  * @property int $id
  * @property int $group_id
@@ -23,9 +24,9 @@ use Illuminate\Support\Collection;
 class TextKey extends Model
 {
     /** @return Collection<int, TextKey> */
-    public static function catalog(): Collection
+    public static function catalog(?Layout $layout = null): Collection
     {
-        return TextGroup::catalog()->flatMap->textKeys;
+        return TextGroup::catalog($layout)->flatMap->textKeys;
     }
 
     /** The vMix field name: Group.key */
