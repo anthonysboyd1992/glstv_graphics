@@ -1,100 +1,86 @@
 <section class="w-full space-y-6">
     <div class="flex items-start justify-between gap-4">
         <div>
-            <flux:heading size="xl">{{ __('Broadcasts') }}</flux:heading>
-            <flux:subheading>{{ __('One per race night. Each carries its own identifier, cue stack and data source URLs.') }}</flux:subheading>
+            <h1 class="text-2xl font-semibold tracking-tight">{{ __('Broadcasts') }}</h1>
+            <p class="mt-1 text-sm text-zinc-400">{{ __('One per vMix PC. The date is the night that box is covering. Text fields are shared; live values, defaults, sections and cues stay on this box.') }}</p>
         </div>
 
-        <flux:modal.trigger name="create-show">
-            <flux:button variant="primary" icon="plus">{{ __('New broadcast') }}</flux:button>
-        </flux:modal.trigger>
+        @can('broadcasts.manage')
+            <x-ui.btn variant="primary" icon="plus" wire:click="$set('creating', true)">
+                {{ __('New broadcast') }}
+            </x-ui.btn>
+        @endcan
     </div>
 
     @if ($this->shows->isEmpty())
-        <flux:callout icon="signal">
-            <flux:callout.heading>{{ __('No broadcasts yet') }}</flux:callout.heading>
-            <flux:callout.text>
-                {{ __('Create one to get a control board, a rundown and a pair of data source URLs to point vMix at.') }}
-            </flux:callout.text>
-        </flux:callout>
+        <x-ui.empty icon="signal" :title="__('No broadcasts yet')">
+            {{ __('Create one to get a control board, a rundown and a pair of data source URLs to point that vMix box at.') }}
+        </x-ui.empty>
     @else
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             @foreach ($this->shows as $show)
-                <flux:card class="space-y-4">
+                <x-ui.card class="space-y-4 p-5">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <flux:heading size="lg" class="truncate">{{ $show->name }}</flux:heading>
-                            <flux:text class="truncate">{{ $show->showTemplate->name }}</flux:text>
+                            <h2 class="truncate text-lg font-semibold">{{ $show->name }}</h2>
+                            <p class="truncate font-mono text-xs text-zinc-500">{{ $show->uuid }}</p>
                         </div>
-
-                        <flux:badge size="sm" :color="$show->status === 'live' ? 'red' : 'zinc'">
+                        <x-ui.badge :tone="$show->status === 'live' ? 'live' : 'zinc'">
                             {{ ucfirst($show->status) }}
-                        </flux:badge>
+                        </x-ui.badge>
                     </div>
 
-                    <div class="space-y-1 text-sm">
+                    <dl class="space-y-1 text-sm">
                         <div class="flex justify-between gap-2">
-                            <flux:text variant="subtle">{{ __('Scheduled') }}</flux:text>
-                            <flux:text>{{ $show->scheduled_for?->format('D j M, g:ia') ?? '—' }}</flux:text>
+                            <dt class="text-zinc-500">{{ __('Night') }}</dt>
+                            <dd>{{ $show->scheduled_for?->format('D j M, g:ia') ?? '—' }}</dd>
                         </div>
                         <div class="flex justify-between gap-2">
-                            <flux:text variant="subtle">{{ __('Cues') }}</flux:text>
-                            <flux:text>{{ $show->looks_count }}</flux:text>
+                            <dt class="text-zinc-500">{{ __('Cues') }}</dt>
+                            <dd>{{ $show->looks_count }}</dd>
                         </div>
-                        <div class="flex justify-between gap-2">
-                            <flux:text variant="subtle">{{ __('Identifier') }}</flux:text>
-                            <flux:text class="truncate font-mono text-xs">{{ Str::limit($show->uuid, 13, '…') }}</flux:text>
-                        </div>
-                    </div>
+                    </dl>
 
                     <div class="flex items-center gap-2">
-                        <flux:button size="sm" variant="primary" :href="route('shows.board', $show)" wire:navigate>
+                        <x-ui.btn size="sm" variant="primary" :href="route('shows.board', $show)" wire:navigate>
                             {{ __('Open board') }}
-                        </flux:button>
-
-                        <flux:button size="sm" variant="subtle" wire:click="duplicate({{ $show->id }})">
-                            {{ __('Duplicate') }}
-                        </flux:button>
-
-                        <flux:spacer />
-
-                        <flux:button
-                            size="sm"
-                            variant="subtle"
-                            icon="trash"
-                            wire:click="delete({{ $show->id }})"
-                            wire:confirm="{{ __('Delete this broadcast and its cue stack?') }}"
-                        />
+                        </x-ui.btn>
+                        @can('broadcasts.manage')
+                            <x-ui.btn size="sm" wire:click="duplicate({{ $show->id }})">
+                                {{ __('Duplicate') }}
+                            </x-ui.btn>
+                            <span class="flex-1"></span>
+                            <x-ui.btn
+                                size="sm"
+                                variant="danger"
+                                icon="trash"
+                                wire:click="delete({{ $show->id }})"
+                                wire:confirm="{{ __('Delete this broadcast and its cue stack?') }}"
+                                :title="__('Delete')"
+                            />
+                        @endcan
                     </div>
-                </flux:card>
+                </x-ui.card>
             @endforeach
         </div>
     @endif
 
-    <flux:modal name="create-show" class="md:w-128">
-        <form wire:submit="create" class="space-y-6">
+    @if ($creating)
+    <x-ui.modal close="creating">
+        <form wire:submit="create" class="space-y-5">
             <div>
-                <flux:heading size="lg">{{ __('New broadcast') }}</flux:heading>
-                <flux:text class="mt-2">{{ __('Pick a template and the cue stack comes with it.') }}</flux:text>
+                <h2 class="text-lg font-semibold">{{ __('New broadcast') }}</h2>
+                <p class="mt-1 text-sm text-zinc-400">{{ __('A vMix PC such as GLSTV1. Text fields are already shared. This box gets its own sections, defaults and data source URLs.') }}</p>
             </div>
 
-            <flux:input wire:model="name" :label="__('Name')" placeholder="Saturday Night — Aug 29" required />
+            <x-ui.input wire:model="name" :label="__('Station')" placeholder="GLSTV1" required />
+            <x-ui.input wire:model="scheduledFor" :label="__('Night')" type="datetime-local" />
 
-            <flux:select wire:model="showTemplateId" :label="__('Template')" required>
-                @foreach ($this->templates as $template)
-                    <flux:select.option :value="$template->id">{{ $template->name }}</flux:select.option>
-                @endforeach
-            </flux:select>
-
-            <flux:input wire:model="scheduledFor" :label="__('Scheduled for')" type="datetime-local" />
-
-            <div class="flex gap-2">
-                <flux:spacer />
-                <flux:modal.close>
-                    <flux:button variant="ghost">{{ __('Cancel') }}</flux:button>
-                </flux:modal.close>
-                <flux:button type="submit" variant="primary">{{ __('Create') }}</flux:button>
+            <div class="flex justify-end gap-2">
+                <x-ui.btn variant="ghost" type="button" wire:click="$set('creating', false)">{{ __('Cancel') }}</x-ui.btn>
+                <x-ui.btn variant="primary" type="submit">{{ __('Create') }}</x-ui.btn>
             </div>
         </form>
-    </flux:modal>
+    </x-ui.modal>
+    @endif
 </section>

@@ -2,26 +2,39 @@
 
 namespace App\Livewire\Shows;
 
+use App\Concerns\Toasts;
 use App\Models\Asset;
 use App\Models\Look;
+use App\Models\LookItem;
+use App\Models\Section;
 use App\Models\Show;
-use App\Services\Shows\RoleResolver;
+use App\Models\TextGroup;
+use App\Models\TextKey;
+use App\Services\Assets\AssetScaler;
 use App\Services\Shows\ShowStateManager;
-use Flux\Flux;
+use App\Support\Access;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
  * The live control surface.
  *
- * The rundown is the intended way to run a night: one click advances every
- * section and text field together. The routing grid underneath is the escape
- * hatch for the moments that go off script, and doing anything there drops the
- * show out of the rundown so the two never disagree about what is on air.
+ * Selecting a cue puts it on deck and Go Live puts it to air, kept apart the
+ * way a vision mixer separates preview from program: browsing the stack
+ * mid-race must not change the picture. Go Live then queues the following cue,
+ * so a whole night can be run from that one button.
+ *
+ * The routing grid underneath is the escape hatch for moments that go off
+ * script. It goes straight to air by design — that is the point of it — and
+ * doing anything there drops the show out of the rundown so the two never
+ * disagree about what is showing.
  */
 class Board extends Component
 {
+    use Toasts;
+
     public Show $show;
 
     public string $search = '';
@@ -32,35 +45,74 @@ class Board extends Component
     /** @var array<string, string> */
     public array $text = [];
 
+    public string $newTextKey = '';
+
+    public ?int $newTextKeyGroupId = null;
+
+    public string $newTextGroup = '';
+
+    /** Field whose label is being edited inline. */
+    public ?int $renamingTextKeyId = null;
+
+    public string $textKeyLabel = '';
+
+    /** @var array<string, string> */
+    public array $defaults = [];
+
+    public ?string $scheduledFor = null;
+
+    public bool $layoutOpen = false;
+
+    public bool $endpointsOpen = false;
+
+    /** @var array{key: string, label: string, width: string, height: string} */
+    public array $newSection = ['key' => '', 'label' => '', 'width' => '', 'height' => ''];
+
+    /**
+     * Inline drafts for existing sections, keyed by section id.
+     *
+     * @var array<int, array{key: string, label: string, width: string, height: string}>
+     */
+    public array $sectionEdits = [];
+
     public function mount(Show $show): void
     {
-        $this->show = $show->load(['showTemplate.sections', 'showTemplate.textKeys']);
+        $this->show = $show->load(['sections', 'textDefaults.textKey.group']);
+        $this->scheduledFor = $show->scheduled_for?->format('Y-m-d\TH:i');
+        $this->newTextKeyGroupId = TextGroup::query()->orderBy('sort_order')->value('id');
+        $this->syncSectionEdits();
         $this->syncTextFromState();
     }
 
     #[Computed]
     public function sections(): Collection
     {
-        return $this->show->showTemplate->sections;
+        return $this->show->sections;
+    }
+
+    #[Computed]
+    public function textGroups(): Collection
+    {
+        return TextGroup::catalog();
     }
 
     #[Computed]
     public function textKeys(): Collection
     {
-        return $this->show->showTemplate->textKeys;
+        return $this->textGroups->flatMap->textKeys;
     }
 
     /** @return Collection<int, Look> */
     #[Computed]
     public function looks(): Collection
     {
-        return $this->show->looks()->withCount('items')->get();
+        return $this->show->looks()->withCount('items')->with('items.asset')->get();
     }
 
     /**
-     * Assets offered in the grid. Filtered to the focused section when one is
-     * chosen, because a 1920x180 score bug and a 500x500 corner mark share no
-     * usable images and showing both only makes the grid harder to read.
+     * Assets offered in the grid. Focusing a section sorts the ones that fit it
+     * to the top rather than hiding the rest, because "wrong shape" is a warning
+     * worth seeing, not a reason to make a graphic unreachable mid-race.
      *
      * @return Collection<int, Asset>
      */
@@ -68,6 +120,7 @@ class Board extends Component
     public function assets(): Collection
     {
         $assets = Asset::query()
+            ->originals()
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->orderBy('name')
             ->limit(200)
@@ -78,7 +131,7 @@ class Board extends Component
             : null;
 
         return $section
-            ? $assets->filter(fn (Asset $asset) => $section->accepts($asset))->values()
+            ? $assets->sortByDesc(fn (Asset $asset) => $section->accepts($asset) ? 1 : 0)->values()
             : $assets;
     }
 
@@ -101,62 +154,554 @@ class Board extends Component
     }
 
     /**
-     * Roles the active packs currently fill, shown so an operator can see what a
-     * role-based cue will actually resolve to before firing it.
+     * The on-deck cue's pictures, keyed by section. Unnamed sections stay
+     * empty here so clicking a cue shows that cue, not a hold of air.
+     *
+     * @return array<string, array{asset: Asset|null, change: string}>
      */
     #[Computed]
-    public function roleMap(RoleResolver $roles): Collection
+    public function onDeckSlots(): array
     {
-        return $roles->map($this->show);
+        $look = $this->show->preview_look_id
+            ? Look::query()->with('items.asset')->find($this->show->preview_look_id)
+            : null;
+        $changes = $look?->items->keyBy('section_key') ?? collect();
+
+        return $this->sections
+            ->mapWithKeys(function ($section) use ($look, $changes) {
+                if (! $look) {
+                    return [$section->key => ['asset' => null, 'change' => 'idle']];
+                }
+
+                $item = $changes->get($section->key);
+
+                if (! $item) {
+                    return [$section->key => ['asset' => null, 'change' => 'leave']];
+                }
+
+                if ($item->action === LookItem::ACTION_CLEAR) {
+                    return [$section->key => ['asset' => null, 'change' => 'clear']];
+                }
+
+                return [$section->key => ['asset' => $item->asset, 'change' => 'set']];
+            })
+            ->all();
     }
 
-    public function assign(string $sectionKey, int $assetId, ShowStateManager $state): void
+    public function assign(string $sectionKey, int $assetId, ShowStateManager $state, AssetScaler $scaler): void
     {
-        $state->setSection($this->show, $sectionKey, $assetId);
+        $this->authorize(Access::BOARD_RUN);
+
+        $section = $this->sections->firstWhere('key', $sectionKey);
+        $asset = Asset::query()->findOrFail($assetId);
+
+        if ($section) {
+            $asset = $scaler->fitToSection($asset, $section);
+        }
+
+        $state->setSection($this->show, $sectionKey, $asset->id);
         $this->afterStateChange();
     }
 
     public function clearSection(string $sectionKey, ShowStateManager $state): void
     {
+        $this->authorize(Access::BOARD_RUN);
         $state->clearSection($this->show, $sectionKey);
         $this->afterStateChange();
     }
 
-    public function applyLook(int $lookId, ShowStateManager $state): void
+    /** Selecting a cue only puts it on deck. Air does not move until Go Live. */
+    public function arm(int $lookId, ShowStateManager $state): void
     {
-        $look = $this->show->looks()->with('items')->findOrFail($lookId);
-
-        $state->applyLook($this->show, $look);
+        $this->authorize(Access::BOARD_RUN);
+        $state->arm($this->show, $lookId);
         $this->afterStateChange();
-
-        Flux::toast(text: $look->name, variant: 'success');
     }
 
-    public function step(int $offset, ShowStateManager $state): void
+    public function take(ShowStateManager $state): void
     {
-        $look = $state->applyLookAtOffset($this->show, $offset);
+        $this->authorize(Access::BOARD_RUN);
+        $look = $state->take($this->show);
 
         $this->afterStateChange();
 
         if ($look) {
-            Flux::toast(text: $look->name, variant: 'success');
+            $this->toast(__('On air: :name', ['name' => $look->name]));
         }
+    }
+
+    public function step(int $offset, ShowStateManager $state): void
+    {
+        $this->authorize(Access::BOARD_RUN);
+        $state->armAtOffset($this->show, $offset);
+
+        $this->afterStateChange();
     }
 
     public function resetBoard(ShowStateManager $state): void
     {
+        $this->authorize(Access::BOARD_RUN);
         $state->reset($this->show);
         $this->afterStateChange();
 
-        Flux::toast(text: __('Board cleared.'));
+        $this->toast(__('Board cleared.'));
     }
 
-    public function saveText(string $key, ShowStateManager $state): void
+    public function saveSchedule(): void
     {
-        $state->setText($this->show, $key, $this->text[$key] ?? null);
+        $this->authorize(Access::BOARD_RUN);
+        $this->validate(['scheduledFor' => 'nullable|date']);
+
+        $this->scheduledFor = $this->scheduledFor ?: null;
+        $this->show->update(['scheduled_for' => $this->scheduledFor]);
+        $this->show->refresh();
+    }
+
+    public function saveText(int $textKeyId, ShowStateManager $state): void
+    {
+        $this->authorize(Access::BOARD_RUN);
+        $textKey = $this->textKeys->firstWhere('id', $textKeyId);
+
+        if (! $textKey) {
+            return;
+        }
+
+        $state->setText($this->show, $textKey->fieldName(), $this->text[$textKeyId] ?? null);
         $this->show->refresh();
 
-        Flux::toast(text: __('Updated :key.', ['key' => $key]), variant: 'success');
+        $this->toast(__('Updated :key.', ['key' => $textKey->fieldName()]));
+    }
+
+    public function revertText(int $textKeyId, ShowStateManager $state): void
+    {
+        $this->authorize(Access::BOARD_RUN);
+        $textKey = $this->textKeys->firstWhere('id', $textKeyId);
+
+        if (! $textKey) {
+            return;
+        }
+
+        $state->clearText($this->show, $textKey->fieldName());
+        $this->afterStateChange();
+    }
+
+    /**
+     * Adds a field to the shared catalog. Every vMix box sees it immediately;
+     * only this box's live value and default start empty. The data source name
+     * is Group.key and is fixed from here.
+     */
+    public function addTextKey(): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $this->validate([
+            'newTextKey' => 'required|string|max:120',
+            'newTextKeyGroupId' => 'required|integer|exists:text_groups,id',
+        ]);
+
+        $key = Str::snake(Str::ascii($this->newTextKey));
+
+        if ($key === '' || TextKey::where('group_id', $this->newTextKeyGroupId)->where('key', $key)->exists()) {
+            $this->addError('newTextKey', __('That key is already taken in this group.'));
+
+            return;
+        }
+
+        $textKey = TextKey::create([
+            'group_id' => $this->newTextKeyGroupId,
+            'key' => $key,
+            'label' => $this->newTextKey,
+            'sort_order' => (int) TextKey::where('group_id', $this->newTextKeyGroupId)->max('sort_order') + 1,
+        ]);
+
+        $this->reset('newTextKey');
+        $this->refreshLayout();
+
+        $this->toast(__('Added :key to every broadcast.', ['key' => $textKey->fieldName()]));
+    }
+
+    public function addTextGroup(): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $this->validate(['newTextGroup' => 'required|string|max:80']);
+
+        $label = trim($this->newTextGroup);
+        $key = preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $label) === 1
+            ? $label
+            : Str::studly(Str::ascii($label));
+
+        if ($key === '' || TextGroup::where('key', $key)->exists()) {
+            $this->addError('newTextGroup', __('That group is already taken.'));
+
+            return;
+        }
+
+        $group = TextGroup::create([
+            'key' => $key,
+            'label' => $label,
+            'sort_order' => (int) TextGroup::max('sort_order') + 1,
+        ]);
+
+        $this->reset('newTextGroup');
+        $this->newTextKeyGroupId = $group->id;
+        $this->refreshLayout();
+
+        $this->toast(__('Added group :key. Fields will publish as :key.key.', ['key' => $key]));
+    }
+
+    public function startTextRename(int $textKeyId): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $this->renamingTextKeyId = $textKeyId;
+        $this->textKeyLabel = $this->textKeys->firstWhere('id', $textKeyId)?->label ?? '';
+    }
+
+    public function renameTextKey(): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        if (! $this->renamingTextKeyId) {
+            return;
+        }
+
+        $this->validate(['textKeyLabel' => 'required|string|max:120']);
+
+        TextKey::whereKey($this->renamingTextKeyId)->update(['label' => trim($this->textKeyLabel)]);
+
+        $this->reset('renamingTextKeyId', 'textKeyLabel');
+        $this->refreshLayout();
+    }
+
+    public function cancelTextRename(): void
+    {
+        $this->reset('renamingTextKeyId', 'textKeyLabel');
+    }
+
+    public function saveTextDefault(int $textKeyId): void
+    {
+        $this->authorize(Access::BOARD_RUN);
+        $textKey = $this->textKeys->firstWhere('id', $textKeyId);
+
+        if (! $textKey) {
+            return;
+        }
+
+        $this->show->textDefaults()->updateOrCreate(
+            ['text_key_id' => $textKey->id],
+            ['default_value' => $this->defaults[$textKeyId] ?? ''],
+        );
+
+        $this->show->unsetRelation('textDefaults');
+        $this->reloadLayout();
+    }
+
+    public function moveTextKey(int $textKeyId, int $direction): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $textKey = $this->textKeys->firstWhere('id', $textKeyId);
+
+        if (! $textKey) {
+            return;
+        }
+
+        $keys = $this->textKeys->where('group_id', $textKey->group_id)->values();
+        $index = $keys->search(fn (TextKey $key) => $key->id === $textKeyId);
+
+        if ($index === false) {
+            return;
+        }
+
+        $swap = $keys->get($index + $direction);
+
+        if (! $swap) {
+            return;
+        }
+
+        $key = $keys->get($index);
+
+        [$key->sort_order, $swap->sort_order] = [$swap->sort_order, $key->sort_order];
+
+        $key->save();
+        $swap->save();
+
+        $this->reloadLayout();
+    }
+
+    public function moveTextGroup(int $groupId, int $direction): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $groups = $this->textGroups->values();
+        $index = $groups->search(fn (TextGroup $group) => $group->id === $groupId);
+
+        if ($index === false) {
+            return;
+        }
+
+        $swap = $groups->get($index + $direction);
+
+        if (! $swap) {
+            return;
+        }
+
+        $group = $groups->get($index);
+
+        [$group->sort_order, $swap->sort_order] = [$swap->sort_order, $group->sort_order];
+
+        $group->save();
+        $swap->save();
+
+        $this->reloadLayout();
+    }
+
+    public function deleteTextGroup(int $groupId): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $group = $this->textGroups->firstWhere('id', $groupId);
+
+        if (! $group) {
+            return;
+        }
+
+        $group->delete();
+
+        if ($this->newTextKeyGroupId === $groupId) {
+            $this->newTextKeyGroupId = TextGroup::query()->orderBy('sort_order')->value('id');
+        }
+
+        $this->refreshLayout();
+
+        $this->toast(__('Removed group :key from every broadcast.', ['key' => $group->key]));
+    }
+
+    public function deleteTextKey(int $textKeyId): void
+    {
+        $this->authorize(Access::CATALOG_EDIT);
+        $textKey = $this->textKeys->firstWhere('id', $textKeyId);
+
+        if (! $textKey) {
+            return;
+        }
+
+        $textKey->delete();
+
+        $this->refreshLayout();
+
+        $this->toast(__('Removed :key from every broadcast.', ['key' => $textKey->key]));
+    }
+
+    public function addSection(): void
+    {
+        $this->authorize(Access::BROADCASTS_MANAGE);
+        $this->validate([
+            'newSection.key' => ['required', 'regex:/^[A-Za-z][A-Za-z0-9_]*$/', 'max:60'],
+            'newSection.label' => 'required|string|max:80',
+            'newSection.width' => 'nullable|integer|min:1|max:16384',
+            'newSection.height' => 'nullable|integer|min:1|max:16384',
+        ], [
+            'newSection.key.regex' => __('Keys become data source field names: letters, numbers and underscores, starting with a letter.'),
+        ]);
+
+        $key = $this->newSection['key'];
+        $width = $this->newSection['width'] !== '' ? (int) $this->newSection['width'] : null;
+        $height = $this->newSection['height'] !== '' ? (int) $this->newSection['height'] : null;
+
+        if (($width === null) !== ($height === null)) {
+            $this->addError('newSection.width', __('Width and height go together.'));
+
+            return;
+        }
+
+        if ($this->show->sections()->where('key', $key)->exists()) {
+            $this->addError('newSection.key', __('That key is already taken.'));
+
+            return;
+        }
+
+        $this->show->sections()->create([
+            'key' => $key,
+            'label' => $this->newSection['label'],
+            'width' => $width,
+            'height' => $height,
+            'sort_order' => (int) $this->show->sections()->max('sort_order') + 1,
+        ]);
+
+        $this->reset('newSection');
+        $this->refreshLayout();
+
+        $this->toast(__('Added :key.', ['key' => $key]));
+    }
+
+    public function saveSection(int $sectionId, ShowStateManager $state, AssetScaler $scaler): void
+    {
+        $this->authorize(Access::BROADCASTS_MANAGE);
+
+        $section = $this->sections->firstWhere('id', $sectionId);
+
+        if (! $section) {
+            return;
+        }
+
+        $this->validate([
+            "sectionEdits.{$sectionId}.key" => ['required', 'regex:/^[A-Za-z][A-Za-z0-9_]*$/', 'max:60'],
+            "sectionEdits.{$sectionId}.label" => 'required|string|max:80',
+            "sectionEdits.{$sectionId}.width" => 'nullable|integer|min:1|max:16384',
+            "sectionEdits.{$sectionId}.height" => 'nullable|integer|min:1|max:16384',
+        ], [
+            "sectionEdits.{$sectionId}.key.regex" => __('Keys become data source field names: letters, numbers and underscores, starting with a letter.'),
+        ]);
+
+        $draft = $this->sectionEdits[$sectionId];
+        $key = $draft['key'];
+        $width = $draft['width'] === '' || $draft['width'] === null ? null : (int) $draft['width'];
+        $height = $draft['height'] === '' || $draft['height'] === null ? null : (int) $draft['height'];
+
+        if (($width === null) !== ($height === null)) {
+            $this->addError("sectionEdits.{$sectionId}.width", __('Width and height go together.'));
+
+            return;
+        }
+
+        if ($key !== $section->key && $this->show->sections()->where('key', $key)->exists()) {
+            $this->addError("sectionEdits.{$sectionId}.key", __('That key is already taken.'));
+
+            return;
+        }
+
+        $oldKey = $section->key;
+        $sizeChanged = $section->width !== $width || $section->height !== $height;
+
+        $section->update([
+            'key' => $key,
+            'label' => $draft['label'],
+            'width' => $width,
+            'height' => $height,
+        ]);
+
+        if ($key !== $oldKey) {
+            $state->renameSectionKey($this->show, $oldKey, $key);
+
+            LookItem::query()
+                ->where('section_key', $oldKey)
+                ->whereHas('look', fn ($query) => $query->where('show_id', $this->show->id))
+                ->update(['section_key' => $key]);
+
+            if ($this->focusSection === $oldKey) {
+                $this->focusSection = $key;
+            }
+        }
+
+        $fitted = $sizeChanged
+            ? $this->correctSectionPictures($section->fresh(), $state, $scaler)
+            : 0;
+
+        $this->refreshLayout();
+
+        $message = __('Updated :key.', ['key' => $key]);
+
+        if ($fitted) {
+            $message .= ' '.trans_choice('Fitted :count picture.|Fitted :count pictures.', $fitted, ['count' => $fitted]);
+        }
+
+        $this->toast($message);
+    }
+
+    public function deleteSection(int $sectionId, ShowStateManager $state): void
+    {
+        $this->authorize(Access::BROADCASTS_MANAGE);
+        $section = $this->sections->firstWhere('id', $sectionId);
+
+        if (! $section) {
+            return;
+        }
+
+        LookItem::where('section_key', $section->key)
+            ->whereHas('look', fn ($query) => $query->where('show_id', $this->show->id))
+            ->delete();
+
+        $state->dropSectionKey($this->show, $section->key);
+
+        $section->delete();
+
+        if ($this->focusSection === $section->key) {
+            $this->focusSection = null;
+        }
+
+        $this->refreshLayout();
+
+        $this->toast(__('Removed :key.', ['key' => $section->key]));
+    }
+
+    protected function refreshLayout(): void
+    {
+        $this->reloadLayout();
+        $this->syncTextFromState();
+    }
+
+    protected function reloadLayout(): void
+    {
+        $this->show->load(['sections', 'textDefaults.textKey.group']);
+        $this->syncSectionEdits();
+
+        unset($this->textKeys, $this->textGroups, $this->sections, $this->onAir, $this->onDeckSlots, $this->looks);
+    }
+
+    /**
+     * Refit every picture currently using this section: on air and in cues.
+     * Always scales from the original file so a size change does not compound.
+     */
+    protected function correctSectionPictures(Section $section, ShowStateManager $state, AssetScaler $scaler): int
+    {
+        $this->show->refresh();
+        $changed = 0;
+
+        $currentId = $this->show->sectionAssetId($section->key);
+        $nextId = $this->correctedAssetId($currentId, $section, $scaler);
+
+        if ($nextId !== $currentId) {
+            $state->putSectionAsset($this->show, $section->key, $nextId);
+            $changed++;
+        }
+
+        $items = LookItem::query()
+            ->where('section_key', $section->key)
+            ->where('action', LookItem::ACTION_SET)
+            ->whereNotNull('asset_id')
+            ->whereHas('look', fn ($query) => $query->where('show_id', $this->show->id))
+            ->get();
+
+        foreach ($items as $item) {
+            $fittedId = $this->correctedAssetId($item->asset_id, $section, $scaler);
+
+            if ($fittedId !== $item->asset_id) {
+                $item->update(['asset_id' => $fittedId]);
+                $changed++;
+            }
+        }
+
+        return $changed;
+    }
+
+    protected function correctedAssetId(?int $assetId, Section $section, AssetScaler $scaler): ?int
+    {
+        if ($assetId === null) {
+            return null;
+        }
+
+        $asset = Asset::query()->find($assetId);
+
+        return $asset ? $scaler->forSection($asset, $section)->id : $assetId;
+    }
+
+    protected function syncSectionEdits(): void
+    {
+        $this->sectionEdits = $this->show->sections
+            ->mapWithKeys(fn (Section $section) => [
+                $section->id => [
+                    'key' => $section->key,
+                    'label' => $section->label,
+                    'width' => $section->width !== null ? (string) $section->width : '',
+                    'height' => $section->height !== null ? (string) $section->height : '',
+                ],
+            ])
+            ->all();
     }
 
     protected function afterStateChange(): void
@@ -164,14 +709,22 @@ class Board extends Component
         $this->show->refresh();
         $this->syncTextFromState();
 
-        unset($this->onAir);
+        unset($this->onAir, $this->onDeckSlots, $this->looks);
     }
 
     protected function syncTextFromState(): void
     {
-        $this->text = $this->show->showTemplate->textKeys
-            ->mapWithKeys(fn ($key) => [
-                $key->key => (string) ($this->show->textValue($key->key) ?? $key->default_value ?? ''),
+        $defaults = $this->show->textDefaultMap();
+
+        $this->text = $this->textKeys
+            ->mapWithKeys(fn (TextKey $key) => [
+                $key->id => (string) ($this->show->textValueFor($key) ?? $defaults[$key->fieldName()] ?? ''),
+            ])
+            ->all();
+
+        $this->defaults = $this->textKeys
+            ->mapWithKeys(fn (TextKey $key) => [
+                $key->id => (string) ($defaults[$key->fieldName()] ?? ''),
             ])
             ->all();
     }

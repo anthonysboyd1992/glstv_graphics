@@ -1,116 +1,122 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-white dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
-                <flux:sidebar.collapse class="lg:hidden" />
-            </flux:sidebar.header>
+    <body class="min-h-screen bg-zinc-950 text-zinc-100 antialiased" x-data="{ sidebar: false }">
+        <div
+            x-show="sidebar"
+            x-cloak
+            class="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            @click="sidebar = false"
+        ></div>
 
-            <flux:sidebar.nav>
-                <flux:sidebar.group :heading="__('Broadcast')" class="grid">
-                    <flux:sidebar.item icon="signal" :href="route('shows.index')" :current="request()->routeIs('shows.*')" wire:navigate>
-                        {{ __('Broadcasts') }}
-                    </flux:sidebar.item>
-                    <flux:sidebar.item icon="photo" :href="route('assets.library')" :current="request()->routeIs('assets.*')" wire:navigate>
-                        {{ __('Asset library') }}
-                    </flux:sidebar.item>
-                    <flux:sidebar.item icon="squares-2x2" :href="route('packs.index')" :current="request()->routeIs('packs.*')" wire:navigate>
-                        {{ __('Asset packs') }}
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
+        <aside
+            class="fixed inset-y-0 left-0 z-50 flex w-60 -translate-x-full flex-col border-r border-zinc-800 bg-zinc-950 transition lg:translate-x-0"
+            :class="{ 'translate-x-0': sidebar }"
+        >
+            <div class="flex h-14 items-center gap-2 px-4">
+                <x-app-logo href="{{ route('shows.index') }}" wire:navigate />
+            </div>
 
-                <flux:sidebar.group :heading="__('Setup')" class="grid">
-                    <flux:sidebar.item icon="rectangle-stack" :href="route('templates.index')" :current="request()->routeIs('templates.*')" wire:navigate>
-                        {{ __('Templates') }}
-                    </flux:sidebar.item>
-                    <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
-            </flux:sidebar.nav>
-
-            <flux:spacer />
-
-            <flux:sidebar.nav>
-                <flux:sidebar.item icon="folder-git-2" href="https://github.com/laravel/livewire-starter-kit" target="_blank">
-                    {{ __('Repository') }}
-                </flux:sidebar.item>
-
-                <flux:sidebar.item icon="book-open-text" href="https://laravel.com/docs/starter-kits#livewire" target="_blank">
-                    {{ __('Documentation') }}
-                </flux:sidebar.item>
-            </flux:sidebar.nav>
-
-            <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
-        </flux:sidebar>
-
-        <!-- Mobile User Menu -->
-        <flux:header class="lg:hidden">
-            <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
-
-            <flux:spacer />
-
-            <flux:dropdown position="top" align="end">
-                <flux:profile
-                    :initials="auth()->user()->initials()"
-                    icon-trailing="chevron-down"
-                />
-
-                <flux:menu>
-                    <flux:menu.radio.group>
-                        <div class="p-0 text-sm font-normal">
-                            <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-                                <flux:avatar
-                                    :name="auth()->user()->name"
-                                    :initials="auth()->user()->initials()"
-                                />
-
-                                <div class="grid flex-1 text-start text-sm leading-tight">
-                                    <flux:heading class="truncate">{{ auth()->user()->name }}</flux:heading>
-                                    <flux:text class="truncate">{{ auth()->user()->email }}</flux:text>
-                                </div>
-                            </div>
-                        </div>
-                    </flux:menu.radio.group>
-
-                    <flux:menu.separator />
-
-                    <flux:menu.radio.group>
-                        <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
-                            {{ __('Settings') }}
-                        </flux:menu.item>
-                    </flux:menu.radio.group>
-
-                    <flux:menu.separator />
-
-                    <form method="POST" action="{{ route('logout') }}" class="w-full">
-                        @csrf
-                        <flux:menu.item
-                            as="button"
-                            type="submit"
-                            icon="arrow-right-start-on-rectangle"
-                            class="w-full cursor-pointer"
-                            data-test="logout-button"
+            <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-4">
+                <div>
+                    <p class="px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">{{ __('Broadcast') }}</p>
+                    <div class="mt-1 space-y-0.5">
+                        <a
+                            href="{{ route('shows.index') }}"
+                            wire:navigate
+                            @class([
+                                'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm',
+                                'bg-zinc-800 text-white' => request()->routeIs('shows.*'),
+                                'text-zinc-400 hover:bg-zinc-900 hover:text-white' => ! request()->routeIs('shows.*'),
+                            ])
                         >
+                            <x-icon name="signal" class="size-4" />
+                            {{ __('Broadcasts') }}
+                        </a>
+                        <a
+                            href="{{ route('assets.library') }}"
+                            wire:navigate
+                            @class([
+                                'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm',
+                                'bg-zinc-800 text-white' => request()->routeIs('assets.*'),
+                                'text-zinc-400 hover:bg-zinc-900 hover:text-white' => ! request()->routeIs('assets.*'),
+                            ])
+                        >
+                            <x-icon name="photo" class="size-4" />
+                            {{ __('Asset library') }}
+                        </a>
+                    </div>
+                </div>
+
+                @can('users.manage')
+                    <div>
+                        <p class="px-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">{{ __('People') }}</p>
+                        <div class="mt-1 space-y-0.5">
+                            <a
+                                href="{{ route('users.index') }}"
+                                wire:navigate
+                                @class([
+                                    'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm',
+                                    'bg-zinc-800 text-white' => request()->routeIs('users.*'),
+                                    'text-zinc-400 hover:bg-zinc-900 hover:text-white' => ! request()->routeIs('users.*'),
+                                ])
+                            >
+                                <x-icon name="user-group" class="size-4" />
+                                {{ __('Users') }}
+                            </a>
+                        </div>
+                    </div>
+                @endcan
+            </nav>
+
+            <div class="border-t border-zinc-800 p-3" x-data="{ open: false }">
+                <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-zinc-900"
+                    data-test="sidebar-menu-button"
+                    @click="open = ! open"
+                >
+                    <span class="flex size-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-zinc-200">
+                        {{ auth()->user()->initials() }}
+                    </span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-medium">{{ auth()->user()->name }}</span>
+                        <span class="block truncate text-xs text-zinc-500">{{ auth()->user()->email }}</span>
+                    </span>
+                    <x-icon name="chevrons-up-down" class="size-4 text-zinc-500" />
+                </button>
+
+                <div x-show="open" x-cloak @click.outside="open = false" class="mt-1 rounded-lg border border-zinc-800 bg-zinc-900 py-1">
+                    <a href="{{ route('profile.edit') }}" wire:navigate class="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800">
+                        <x-icon name="cog" class="size-4" />
+                        {{ __('Settings') }}
+                    </a>
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit" data-test="logout-button" class="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800">
+                            <x-icon name="arrow-right-start-on-rectangle" class="size-4" />
                             {{ __('Log out') }}
-                        </flux:menu.item>
+                        </button>
                     </form>
-                </flux:menu>
-            </flux:dropdown>
-        </flux:header>
+                </div>
+            </div>
+        </aside>
 
-        {{ $slot }}
+        <div class="lg:pl-60">
+            <header class="flex h-14 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 lg:hidden">
+                <button type="button" class="rounded-lg p-2 text-zinc-400 hover:bg-zinc-900 hover:text-white" @click="sidebar = true">
+                    <x-icon name="bars-2" class="size-5" />
+                </button>
+                <x-app-logo href="{{ route('shows.index') }}" wire:navigate />
+            </header>
 
-        @persist('toast')
-            <flux:toast.group>
-                <flux:toast />
-            </flux:toast.group>
-        @endpersist
+            <main class="p-6">
+                {{ $slot }}
+            </main>
+        </div>
 
-        @fluxScripts
+        <x-ui.toast />
     </body>
 </html>

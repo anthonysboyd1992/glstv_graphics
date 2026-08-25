@@ -5,11 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
- * @property int $show_template_id
+ * @property int $show_id
  * @property string $key
  * @property string $label
  * @property string|null $description
@@ -17,19 +16,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $height
  * @property int $sort_order
  */
-#[Fillable(['show_template_id', 'key', 'label', 'description', 'width', 'height', 'sort_order'])]
+#[Fillable(['show_id', 'key', 'label', 'description', 'width', 'height', 'sort_order'])]
 class Section extends Model
 {
-    /** @return BelongsTo<ShowTemplate, $this> */
-    public function showTemplate(): BelongsTo
+    /** @return BelongsTo<Show, $this> */
+    public function show(): BelongsTo
     {
-        return $this->belongsTo(ShowTemplate::class);
-    }
-
-    /** @return HasMany<AssetRole, $this> */
-    public function roles(): HasMany
-    {
-        return $this->hasMany(AssetRole::class);
+        return $this->belongsTo(Show::class);
     }
 
     public function hasDimensions(): bool

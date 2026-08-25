@@ -30,10 +30,31 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            'role_id' => User::adminRoleId(),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
         ];
+    }
+
+    public function asRole(string $slug): static
+    {
+        return $this->state(fn () => ['role_id' => User::roleId($slug)]);
+    }
+
+    public function viewer(): static
+    {
+        return $this->asRole('viewer');
+    }
+
+    public function operator(): static
+    {
+        return $this->asRole('operator');
+    }
+
+    public function director(): static
+    {
+        return $this->asRole('director');
     }
 
     /**

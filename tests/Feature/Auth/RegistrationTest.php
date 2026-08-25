@@ -37,5 +37,6 @@ class RegistrationTest extends TestCase
             ->assertRedirect(route('dashboard', absolute: false));
 
         $this->assertAuthenticated();
+        $this->assertTrue(auth()->user()->role->slug === 'viewer');
     }
 }

@@ -6,6 +6,7 @@ use App\Models\Asset;
 use App\Models\Look;
 use App\Models\LookItem;
 use App\Models\Show;
+use App\Models\TextKey;
 use DOMDocument;
 
 /**
@@ -16,9 +17,10 @@ use DOMDocument;
  *  - The live feed is a single row holding whatever is on air right now. This is
  *    what titles bind to, and it is the only feed needed to run a show.
  *
- *  - The rundown feed is one fully resolved row per look, in running order. It
+ *  - The rundown feed is one fully resolved row per cue, in running order. It
  *    is optional, and useful for things that want to read ahead rather than
- *    read now, such as an "up next" ticker.
+ *    read now, such as an "up next" ticker. Cues route pictures only, so the
+ *    text in these rows is whatever is live at the time of the request.
  *
  * Payloads are flat in both cases: one field per section holding an image URL,
  * one field per text key holding a string. vMix maps fields onto title layers by
@@ -26,14 +28,12 @@ use DOMDocument;
  */
 class DataSourceBuilder
 {
-    public function __construct(protected RoleResolver $roles) {}
-
     /**
      * @return array<string, string>
      */
     public function row(Show $show): array
     {
-        $show->loadMissing('showTemplate.sections', 'showTemplate.textKeys');
+        $show->loadMissing('sections', 'textDefaults.textKey');
 
         $state = $this->normalise($show->current_state, $show);
 
@@ -61,14 +61,14 @@ class DataSourceBuilder
      */
     public function rundownRows(Show $show): array
     {
-        $show->loadMissing('showTemplate.sections', 'showTemplate.textKeys');
+        $show->loadMissing('sections', 'textDefaults.textKey');
 
         $looks = $show->looks()->with('items')->get();
         $state = $this->baseline($show);
         $states = [];
 
         foreach ($looks as $look) {
-            $state = $this->apply($state, $look, $show);
+            $state = $this->apply($state, $look);
             $states[] = $state;
         }
 
@@ -115,8 +115,9 @@ class DataSourceBuilder
     protected function render(Show $show, array $state, array $assets): array
     {
         $row = [];
+        $defaults = $show->textDefaultMap();
 
-        foreach ($show->showTemplate->sections as $section) {
+        foreach ($show->sections as $section) {
             $assetId = $state['sections'][$section->key]['asset_id'] ?? null;
 
             $row[$section->key] = $assetId && isset($assets[$assetId])
@@ -124,8 +125,13 @@ class DataSourceBuilder
                 : '';
         }
 
-        foreach ($show->showTemplate->textKeys as $textKey) {
-            $row[$textKey->key] = (string) ($state['text'][$textKey->key] ?? $textKey->default_value ?? '');
+        foreach (TextKey::catalog() as $textKey) {
+            $row[$textKey->fieldName()] = (string) (
+                $state['text'][$textKey->fieldName()]
+                ?? $state['text'][$textKey->key]
+                ?? $defaults[$textKey->fieldName()]
+                ?? ''
+            );
         }
 
         return $row;
@@ -137,10 +143,12 @@ class DataSourceBuilder
     protected function baseline(Show $show): array
     {
         return [
-            'sections' => $show->showTemplate->sections
+            'sections' => $show->sections
                 ->mapWithKeys(fn ($section) => [$section->key => ['asset_id' => null]])
                 ->all(),
-            'text' => $this->textDefaults($show),
+            // Cues carry no text of their own, so every rundown row reports the
+            // captions that are live right now.
+            'text' => $this->normalise($show->current_state, $show)['text'],
         ];
     }
 
@@ -148,24 +156,12 @@ class DataSourceBuilder
      * @param  array{sections: array<string, mixed>, text: array<string, mixed>}  $state
      * @return array{sections: array<string, mixed>, text: array<string, mixed>}
      */
-    protected function apply(array $state, Look $look, Show $show): array
+    protected function apply(array $state, Look $look): array
     {
-        $defaults = $this->textDefaults($show);
-
         foreach ($look->items as $item) {
-            if ($item->target_type === LookItem::TARGET_SECTION) {
-                $state['sections'][$item->target_key] = [
-                    'asset_id' => $item->action === LookItem::ACTION_CLEAR
-                        ? null
-                        : ($item->asset_id ?: $this->roles->resolve($show, (string) $item->role_key)?->id),
-                ];
-
-                continue;
-            }
-
-            $state['text'][$item->target_key] = $item->action === LookItem::ACTION_CLEAR
-                ? ($defaults[$item->target_key] ?? null)
-                : $item->text_value;
+            $state['sections'][$item->section_key] = [
+                'asset_id' => $item->action === LookItem::ACTION_CLEAR ? null : $item->asset_id,
+            ];
         }
 
         return $state;
@@ -176,9 +172,7 @@ class DataSourceBuilder
      */
     protected function textDefaults(Show $show): array
     {
-        return $show->showTemplate->textKeys
-            ->mapWithKeys(fn ($key) => [$key->key => $key->default_value])
-            ->all();
+        return $show->textDefaultMap();
     }
 
     /**

@@ -3,11 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
+ * @property int|null $source_asset_id
  * @property string $name
  * @property string $path
  * @property string|null $original_filename
@@ -20,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<int, string>|null $tags
  */
 #[Fillable([
-    'name', 'path', 'original_filename', 'sha256', 'extension',
+    'source_asset_id', 'name', 'path', 'original_filename', 'sha256', 'extension',
     'mime', 'width', 'height', 'bytes', 'tags',
 ])]
 class Asset extends Model
@@ -35,10 +38,27 @@ class Asset extends Model
         ];
     }
 
-    /** @return HasMany<AssetPackItem, $this> */
-    public function packItems(): HasMany
+    /** @return BelongsTo<Asset, $this> */
+    public function source(): BelongsTo
     {
-        return $this->hasMany(AssetPackItem::class);
+        return $this->belongsTo(self::class, 'source_asset_id');
+    }
+
+    /** @return HasMany<Asset, $this> */
+    public function renditions(): HasMany
+    {
+        return $this->hasMany(self::class, 'source_asset_id');
+    }
+
+    /**
+     * Originals only. Sized copies made for a section stay out of the library.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopeOriginals(Builder $query): Builder
+    {
+        return $query->whereNull('source_asset_id');
     }
 
     /**

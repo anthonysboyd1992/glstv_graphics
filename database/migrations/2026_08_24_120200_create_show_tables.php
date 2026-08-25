@@ -10,7 +10,6 @@ return new class extends Migration
     {
         Schema::create('shows', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('show_template_id')->constrained()->cascadeOnDelete();
             // Stable identifier for this broadcast. Data source URLs key on this
             // rather than the slug, so renaming a show never invalidates a vMix
             // configuration that was built ahead of time.
@@ -27,15 +26,53 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('asset_pack_show', function (Blueprint $table) {
+        // A section is one image slot in vMix. Its key becomes a field name in
+        // the data source, so it must match what the vMix title expects.
+        Schema::create('sections', function (Blueprint $table) {
             $table->id();
             $table->foreignId('show_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('asset_pack_id')->constrained()->cascadeOnDelete();
-            // Lower sort_order wins when two packs fill the same role.
+            $table->string('key');
+            $table->string('label');
+            $table->text('description')->nullable();
+            $table->unsignedInteger('width')->nullable();
+            $table->unsignedInteger('height')->nullable();
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
 
-            $table->unique(['show_id', 'asset_pack_id']);
+            $table->unique(['show_id', 'key']);
+        });
+
+        // Shared caption groups. vMix sees each field as Group.key, e.g. Rundown.now_racing.
+        Schema::create('text_groups', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique();
+            $table->string('label');
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        // Text keys are shared across every vMix box. The key is what a title
+        // binds to; live values and defaults live per broadcast.
+        Schema::create('text_keys', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('group_id')->constrained('text_groups')->cascadeOnDelete();
+            $table->string('key');
+            $table->string('label');
+            $table->text('description')->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->unique(['group_id', 'key']);
+        });
+
+        Schema::create('show_text_defaults', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('show_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('text_key_id')->constrained()->cascadeOnDelete();
+            $table->text('default_value')->nullable();
+            $table->timestamps();
+
+            $table->unique(['show_id', 'text_key_id']);
         });
 
         Schema::create('looks', function (Blueprint $table) {
@@ -48,20 +85,17 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // One row per target the look actually changes. A target with no row is
-        // left untouched when the look is applied.
+        // One row per section the cue actually changes. A section with no row is
+        // left untouched when the cue is taken.
         Schema::create('look_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('look_id')->constrained()->cascadeOnDelete();
-            $table->string('target_type');
-            $table->string('target_key');
+            $table->string('section_key');
             $table->string('action')->default('set');
             $table->foreignId('asset_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('role_key')->nullable();
-            $table->text('text_value')->nullable();
             $table->timestamps();
 
-            $table->unique(['look_id', 'target_type', 'target_key']);
+            $table->unique(['look_id', 'section_key']);
         });
 
         Schema::table('shows', function (Blueprint $table) {
@@ -77,7 +111,10 @@ return new class extends Migration
 
         Schema::dropIfExists('look_items');
         Schema::dropIfExists('looks');
-        Schema::dropIfExists('asset_pack_show');
+        Schema::dropIfExists('show_text_defaults');
+        Schema::dropIfExists('text_keys');
+        Schema::dropIfExists('text_groups');
+        Schema::dropIfExists('sections');
         Schema::dropIfExists('shows');
     }
 };

@@ -3,8 +3,8 @@
 namespace App\Livewire\Settings;
 
 use App\Concerns\PasswordValidationRules;
+use App\Concerns\Toasts;
 use Exception;
-use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\ConfirmTwoFactorAuthentication;
@@ -23,6 +23,7 @@ use Livewire\Component;
 class Security extends Component
 {
     use PasswordValidationRules;
+    use Toasts;
 
     public string $current_password = '';
 
@@ -114,7 +115,7 @@ class Security extends Component
 
         $this->reset('current_password', 'password', 'password_confirmation');
 
-        Flux::toast(variant: 'success', text: __('Password updated.'));
+        $this->toast(__('Password updated.'));
     }
 
     /**

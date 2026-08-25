@@ -42,7 +42,7 @@ class DataSourceController extends Controller
 
     protected function show(Request $request, string $uuid): Show
     {
-        $show = Show::with(['showTemplate.sections', 'showTemplate.textKeys'])
+        $show = Show::with(['sections', 'textDefaults.textKey.group'])
             ->where('uuid', $uuid)
             ->first();
 

@@ -15,8 +15,6 @@ use App\Models\Show;
  */
 class ShowStateManager
 {
-    public function __construct(protected RoleResolver $roles) {}
-
     public function setSection(Show $show, string $sectionKey, ?int $assetId): Show
     {
         $state = $this->normalise($show->current_state);
@@ -34,6 +32,43 @@ class ShowStateManager
         return $this->setSection($show, $sectionKey, null);
     }
 
+    /**
+     * Swap the picture in a section without taking the show off the rundown.
+     * Used when a section's size changes and existing graphics have to be
+     * refitted — that is a layout correction, not a manual override.
+     */
+    public function putSectionAsset(Show $show, string $sectionKey, ?int $assetId): Show
+    {
+        $state = $this->normalise($show->current_state);
+        $state['sections'][$sectionKey] = ['asset_id' => $assetId];
+
+        return $this->persist($show, $state);
+    }
+
+    public function renameSectionKey(Show $show, string $from, string $to): Show
+    {
+        if ($from === $to) {
+            return $show;
+        }
+
+        $state = $this->normalise($show->current_state);
+
+        if (array_key_exists($from, $state['sections'])) {
+            $state['sections'][$to] = $state['sections'][$from];
+            unset($state['sections'][$from]);
+        }
+
+        return $this->persist($show, $state);
+    }
+
+    public function dropSectionKey(Show $show, string $sectionKey): Show
+    {
+        $state = $this->normalise($show->current_state);
+        unset($state['sections'][$sectionKey]);
+
+        return $this->persist($show, $state);
+    }
+
     public function setText(Show $show, string $key, ?string $value): Show
     {
         $state = $this->normalise($show->current_state);
@@ -43,66 +78,130 @@ class ShowStateManager
     }
 
     /**
-     * Apply a look. Targets the look does not mention are deliberately left
-     * alone, which is what keeps "Heat 2" a two-field change rather than a full
-     * redraw of the board.
+     * Apply a cue. Sections the cue does not mention are deliberately left
+     * alone, which is what keeps "Heat 2" a one-picture change rather than a
+     * full redraw of the board.
+     *
+     * Text is not touched here. It runs on its own clock, and an operator who
+     * has just typed a caution message should not lose it because the next cue
+     * fired.
      */
     public function applyLook(Show $show, Look $look): Show
     {
         $state = $this->normalise($show->current_state);
-        $defaults = $this->textDefaults($show);
-
-        foreach ($look->items as $item) {
-            if ($item->target_type === LookItem::TARGET_SECTION) {
-                $state['sections'][$item->target_key] = [
-                    'asset_id' => $item->action === LookItem::ACTION_CLEAR
-                        ? null
-                        : $this->assetIdFor($show, $item),
-                ];
-
-                continue;
-            }
-
-            // Clearing text returns it to the template default rather than an
-            // empty string, so a title never goes blank unintentionally.
-            $state['text'][$item->target_key] = $item->action === LookItem::ACTION_CLEAR
-                ? ($defaults[$item->target_key] ?? null)
-                : $item->text_value;
-        }
-
+        $state['sections'] = $this->previewSections($show, $look);
         $show->active_look_id = $look->id;
 
         return $this->persist($show, $state);
     }
 
     /**
-     * Clear every section and return all text to its template default.
+     * What each section would show after taking this cue, without writing it.
+     * Unmentioned sections keep whatever is on air.
+     *
+     * @return array<string, array{asset_id: int|null}>
+     */
+    public function previewSections(Show $show, Look $look): array
+    {
+        $sections = $this->normalise($show->current_state)['sections'];
+
+        foreach ($look->items as $item) {
+            $sections[$item->section_key] = [
+                'asset_id' => $item->action === LookItem::ACTION_CLEAR ? null : $item->asset_id,
+            ];
+        }
+
+        return $sections;
+    }
+
+    /**
+     * Returns one field to its template default rather than emptying it, so a
+     * title never goes blank unintentionally.
+     */
+    public function clearText(Show $show, string $key): Show
+    {
+        return $this->setText($show, $key, $this->textDefaults($show)[$key] ?? null);
+    }
+
+    /**
+     * Clears every picture. Text is left alone; wiping the board mid-broadcast
+     * should not also wipe the caption an operator is relying on.
      */
     public function reset(Show $show): Show
     {
-        $sections = [];
+        $state = $this->normalise($show->current_state);
 
-        foreach ($show->showTemplate->sections as $section) {
-            $sections[$section->key] = ['asset_id' => null];
+        foreach ($show->sections as $section) {
+            $state['sections'][$section->key] = ['asset_id' => null];
         }
 
         $show->active_look_id = null;
 
-        return $this->persist($show, [
-            'sections' => $sections,
-            'text' => $this->textDefaults($show),
-        ]);
+        return $this->persist($show, $state);
     }
 
-    public function applyLookAtOffset(Show $show, int $offset): ?Look
+    /**
+     * Returns every field to its template default.
+     */
+    public function resetText(Show $show): Show
     {
-        $looks = $show->looks()->with('items')->get();
+        $state = $this->normalise($show->current_state);
+        $state['text'] = $this->textDefaults($show);
+
+        return $this->persist($show, $state);
+    }
+
+    /**
+     * Puts a cue on deck without touching the picture. Nothing an operator
+     * does while browsing the stack should reach air.
+     */
+    public function arm(Show $show, ?int $lookId): Show
+    {
+        $show->forceFill(['preview_look_id' => $lookId])->save();
+
+        return $show;
+    }
+
+    /**
+     * Puts the on-deck cue to air, then queues the one after it so a night can
+     * be run by pressing Go Live alone.
+     */
+    public function take(Show $show): ?Look
+    {
+        $looks = $show->looks()->with('items')->get()->values();
+        $onDeck = $looks->firstWhere('id', $show->preview_look_id);
+
+        if (! $onDeck) {
+            return null;
+        }
+
+        $this->applyLook($show, $onDeck);
+
+        $index = $looks->search(fn (Look $look) => $look->id === $onDeck->id);
+        $next = $index === false ? null : $looks->get($index + 1);
+
+        $show->forceFill(['preview_look_id' => $next?->id])->save();
+
+        return $onDeck;
+    }
+
+    /**
+     * Moves the on-deck cue up or down the stack. Air is untouched, so this is
+     * safe to press mid-race.
+     */
+    public function armAtOffset(Show $show, int $offset): ?Look
+    {
+        $looks = $show->looks->values();
 
         if ($looks->isEmpty()) {
             return null;
         }
 
-        $currentIndex = $looks->search(fn (Look $look) => $look->id === $show->active_look_id);
+        // With nothing on deck, fall in either side of whatever is on air so
+        // the first press lands somewhere predictable.
+        $anchor = $show->preview_look_id ?? $show->active_look_id;
+        $currentIndex = $looks->search(fn (Look $look) => $look->id === $anchor);
+
         $nextIndex = $currentIndex === false
             ? ($offset > 0 ? 0 : $looks->count() - 1)
             : $currentIndex + $offset;
@@ -113,20 +212,9 @@ class ShowStateManager
             return null;
         }
 
-        $this->applyLook($show, $next);
+        $this->arm($show, $next->id);
 
         return $next;
-    }
-
-    protected function assetIdFor(Show $show, LookItem $item): ?int
-    {
-        if ($item->asset_id) {
-            return $item->asset_id;
-        }
-
-        return $item->role_key
-            ? $this->roles->resolve($show, $item->role_key)?->id
-            : null;
     }
 
     /**
@@ -134,9 +222,7 @@ class ShowStateManager
      */
     protected function textDefaults(Show $show): array
     {
-        return $show->showTemplate->textKeys
-            ->mapWithKeys(fn ($key) => [$key->key => $key->default_value])
-            ->all();
+        return $show->textDefaultMap();
     }
 
     /**

@@ -12,28 +12,40 @@ touching this app.
 
 ## How it fits together
 
-**Show templates** describe the shape of a broadcast. A template owns sections
-(`ScoreBug`, `LowerThird`, …), each with an expected pixel size; text keys
-(`now_racing`, `brb_message`, …); and asset roles for the graphics that swap
-between events.
+**Broadcasts** are vMix PCs — GLSTV1, GLSTV2, GLSTV3 — not one-off race
+nights. Each box has a stable identifier and data source URLs, its own
+sections, cue stack, live text and defaults. The date on a broadcast is the
+night that box is covering.
+
+**Text keys** are grouped, and vMix sees them as `Group.key` —
+`Rundown.now_racing`, `Break.brb_message`. Groups and keys are shared across
+every box, so a title mapped on GLSTV1 keeps working on GLSTV2. Live values and
+defaults stay per box.
+
+A new broadcast starts with the usual dirt-track image slots. Duplicate an
+existing box if you want that shape and the cue stack too.
 
 **Assets** are graphics stored once and addressed by content hash. Re-uploading
 the same file collapses onto the existing record, so a URL vMix has already
-cached never breaks. Dimensions are read on upload and used to keep a 1920x180
-score bug out of a 500x500 slot.
+cached never breaks. Dimensions are read on upload. An asset whose shape does
+not match a section is still assignable; the grid warns rather than hiding it.
 
-**Asset packs** map roles to concrete assets. A pack per track or per series
-lets you swap a night's worth of sponsor and class graphics in one move instead
-of reassigning every section.
+**Cues** are saved picture states you author yourself, one per moment of the
+night — "GLSS Hot Laps", "GLSS Heat 1", and so on. You write them in a
+spreadsheet: a row per cue, a column per section. Every cell is three-state.
+Blank leaves whatever is on air alone, so a cue that only changes the lower
+third is a row with one filled cell. Clear empties that section.
 
-**Looks** are saved cue states: a set of section assignments and text values.
-Each item either sets a section, clears it, or leaves it alone, so a look can
-change the lower third without disturbing the score bug.
+Cues never carry text. Captions (`now_racing`, `next_event`, and anything else
+you add) are typed live on the board and stay put when you Go Live, so a
+caution message you just wrote does not disappear because Heat 2 came up.
 
-**The rundown** is looks in order. Generate a night from a race program and you
-get a cue per class and phase, with `now_racing` and `next_event` already
-written. Then it's Next, Next, Next all night, with the routing grid there for
-anything unplanned.
+Duplicating is the fast path, since Heat 2 is Heat 1 with a different picture.
+A copy lands directly beneath its source and only needs renaming.
+
+**The rundown** is those cues in order. Selecting one puts it on deck. Go Live
+puts it to air and queues the next, so a night can be run from that one button.
+The routing grid on the board is there for anything unplanned.
 
 ## Requirements
 
@@ -53,12 +65,12 @@ php artisan migrate --seed
 npm run build
 ```
 
-The seeder creates a dirt track template, race classes, and a demo show with a
-full rundown. To fill the board with obviously-fake graphics sized to each
-section:
+The seeder creates three demo boxes (GLSTV1–GLSTV3) covering the next Saturday,
+with the dirt-track layout and a short cue stack.
+To fill the board with obviously-fake graphics sized to each section:
 
 ```bash
-php artisan broadcast:demo-assets --fill-pack
+php artisan broadcast:demo-assets
 ```
 
 If you use Herd, isolate the site to a supported PHP version, since the default
@@ -85,8 +97,8 @@ https://your-host/ds/{uuid}/rundown.xml?token={token}
 ```
 
 The live feed is a single row. Every section is a column holding an image URL,
-every text key is a column holding a string, and `UpdatedAt` changes whenever
-anything does.
+every text field is a column named `Group.key` (for example
+`Rundown.now_racing`), and `UpdatedAt` changes whenever anything does.
 
 In vMix, open **Settings → Data Sources → Add**, choose JSON or XML depending on
 which your title expects, paste the URL, and set the refresh interval. One or
@@ -134,5 +146,5 @@ php artisan test
 ```
 
 Feature tests cover every screen, the data source endpoints in both formats, and
-the board's behavior around applying looks, stepping the rundown, manual
-overrides, role resolution, and upload deduplication.
+the board's behavior around on-deck and go-live cues, manual overrides, and
+upload deduplication.

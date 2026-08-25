@@ -29,10 +29,9 @@ class ScreensTest extends TestCase
         $routes = [
             route('shows.index'),
             route('shows.board', $this->show),
-            route('shows.rundown', $this->show),
+            route('shows.cues', $this->show),
             route('assets.library'),
-            route('packs.index'),
-            route('templates.index'),
+            route('users.index'),
         ];
 
         foreach ($routes as $url) {
@@ -56,7 +55,8 @@ class ScreensTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('', $rows[0]['ScoreBug']);
-        $this->assertSame("We'll Be Right Back", $rows[0]['brb_message']);
+        $this->assertSame("We'll Be Right Back", $rows[0]['Break.brb_message']);
+        $this->assertArrayHasKey('Rundown.now_racing', $rows[0]);
     }
 
     public function test_rundown_feed_carries_one_cumulative_row_per_cue(): void
@@ -64,8 +64,8 @@ class ScreensTest extends TestCase
         $rows = $this->getJson($this->show->dataSourceUrl('json', 'rundown'))->assertOk()->json();
 
         $this->assertCount($this->show->looks()->count(), $rows);
-        $this->assertSame('Sprints Hot Laps', $rows[0]['now_racing']);
-        $this->assertSame('Late Models Hot Laps Next', $rows[0]['next_event']);
+        $this->assertSame('', $rows[0]['Rundown.now_racing']);
+        $this->assertSame("We'll Be Right Back", $rows[0]['Break.brb_message']);
     }
 
     public function test_the_xml_feed_is_well_formed(): void
@@ -75,7 +75,7 @@ class ScreensTest extends TestCase
         $document = simplexml_load_string($body);
 
         $this->assertNotFalse($document);
-        $this->assertSame("We'll Be Right Back", (string) $document->row->brb_message);
+        $this->assertSame("We'll Be Right Back", (string) $document->row->{'Break.brb_message'});
     }
 
     public function test_a_wrong_token_is_indistinguishable_from_a_missing_show(): void

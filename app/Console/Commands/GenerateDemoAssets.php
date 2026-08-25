@@ -2,10 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AssetPack;
-use App\Models\AssetRole;
 use App\Models\Section;
-use App\Models\ShowTemplate;
+use App\Models\Show;
 use App\Services\Assets\AssetImporter;
 use Illuminate\Console\Command;
 use Illuminate\Http\UploadedFile;
@@ -13,14 +11,13 @@ use Illuminate\Support\Str;
 
 /**
  * Generates obviously-placeholder graphics at the exact dimensions each section
- * expects, so the routing grid and packs can be exercised before any real art
- * exists. Nothing here is meant to go to air.
+ * expects, so the routing grid can be exercised before any real art exists.
+ * Nothing here is meant to go to air.
  */
 class GenerateDemoAssets extends Command
 {
     protected $signature = 'broadcast:demo-assets
-                            {--template=dirt-track : Template slug to read section sizes from}
-                            {--fill-pack : Also fill the House Defaults pack with the generated art}';
+                            {--show= : Show slug to read section sizes from. Defaults to the first show.}';
 
     protected $description = 'Create placeholder graphics sized to each section, for testing the board';
 
@@ -32,17 +29,21 @@ class GenerateDemoAssets extends Command
             return self::FAILURE;
         }
 
-        $template = ShowTemplate::where('slug', $this->option('template'))->first();
+        $show = $this->option('show')
+            ? Show::where('slug', $this->option('show'))->first()
+            : Show::with('sections')->first();
 
-        if (! $template) {
-            $this->error("No template found with slug [{$this->option('template')}].");
+        if (! $show) {
+            $this->error('No broadcast found. Create one first.');
 
             return self::FAILURE;
         }
 
-        $created = [];
+        $show->load('sections');
 
-        foreach ($template->sections as $section) {
+        $created = 0;
+
+        foreach ($show->sections as $section) {
             if (! $section->hasDimensions()) {
                 continue;
             }
@@ -50,36 +51,29 @@ class GenerateDemoAssets extends Command
             // A few variants per section so the grid has something to choose
             // between rather than a single row.
             foreach (['A', 'B', 'C'] as $variant) {
-                $name = "{$section->label} Placeholder {$variant}";
-
-                $created[] = $this->store($importer, $section, $name, $variant);
+                $this->store($importer, $section, "{$section->label} Placeholder {$variant}", $variant);
+                $created++;
             }
         }
 
-        $this->info(count($created).' placeholder assets stored.');
-
-        if ($this->option('fill-pack')) {
-            $this->fillPack($template, $created);
-        }
+        $this->info($created.' placeholder assets stored.');
 
         return self::SUCCESS;
     }
 
-    protected function store(AssetImporter $importer, Section $section, string $name, string $variant): int
+    protected function store(AssetImporter $importer, Section $section, string $name, string $variant): void
     {
         $path = tempnam(sys_get_temp_dir(), 'demo').'.png';
 
         $this->draw($path, $section->width, $section->height, $section->label.' '.$variant, $variant);
 
-        $asset = $importer->import(
+        $importer->import(
             new UploadedFile($path, Str::slug($name).'.png', 'image/png', null, true),
             $name,
             ['placeholder', Str::slug($section->key)],
         );
 
         @unlink($path);
-
-        return $asset->id;
     }
 
     protected function draw(string $path, int $width, int $height, string $label, string $variant): void
@@ -111,31 +105,5 @@ class GenerateDemoAssets extends Command
 
         imagepng($image, $path);
         imagedestroy($image);
-    }
-
-    /**
-     * @param  array<int, int>  $assetIds
-     */
-    protected function fillPack(ShowTemplate $template, array $assetIds): void
-    {
-        $pack = AssetPack::firstOrCreate(
-            ['slug' => 'house-defaults'],
-            ['name' => 'House Defaults']
-        );
-
-        $roles = AssetRole::where('show_template_id', $template->id)->orderBy('sort_order')->get();
-
-        foreach ($roles as $index => $role) {
-            if (! isset($assetIds[$index])) {
-                break;
-            }
-
-            $pack->items()->updateOrCreate(
-                ['role_key' => $role->key],
-                ['asset_id' => $assetIds[$index]],
-            );
-        }
-
-        $this->info("Filled {$pack->name} with placeholder art.");
     }
 }

@@ -1,0 +1,178 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Livewire\Shows\Cues;
+use App\Models\Asset;
+use App\Models\LookItem;
+use App\Models\Show;
+use App\Models\User;
+use App\Services\Assets\AssetImporter;
+use Database\Seeders\DirtTrackSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
+use Tests\TestCase;
+
+class CuesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected Show $show;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('local');
+        $this->seed(DirtTrackSeeder::class);
+        $this->show = Show::firstOrFail();
+        $this->actingAs(User::factory()->create());
+    }
+
+    public function test_a_new_cue_starts_with_every_cell_blank(): void
+    {
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->set('newName', 'GLSS Trophy Dash')
+            ->call('add');
+
+        $cue = $this->show->looks()->where('name', 'GLSS Trophy Dash')->firstOrFail();
+
+        $this->assertSame(0, $cue->items()->count());
+    }
+
+    public function test_choosing_an_asset_fills_one_cell_and_leaves_the_rest_blank(): void
+    {
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'asset:'.$asset->id);
+
+        $items = $cue->items()->get();
+
+        $this->assertCount(1, $items);
+        $this->assertSame('ScoreBug', $items[0]->section_key);
+        $this->assertSame($asset->id, $items[0]->asset_id);
+        $this->assertSame(LookItem::ACTION_SET, $items[0]->action);
+    }
+
+    public function test_choosing_an_off_size_asset_stores_a_fitted_copy(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'asset:'.$asset->id);
+
+        $item = $cue->items()->firstOrFail();
+        $fitted = Asset::query()->findOrFail($item->asset_id);
+
+        $this->assertNotSame($asset->id, $fitted->id);
+        $this->assertSame($asset->id, $fitted->source_asset_id);
+        $this->assertSame(1920, $fitted->width);
+        $this->assertSame(180, $fitted->height);
+    }
+
+    public function test_setting_a_cell_back_to_blank_removes_it(): void
+    {
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'asset:'.$asset->id)
+            ->call('setSection', $cue->id, 'ScoreBug', 'leave');
+
+        $this->assertSame(0, $cue->items()->count());
+    }
+
+    public function test_clear_is_distinct_from_blank(): void
+    {
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'LowerThird', 'clear');
+
+        $this->assertSame(LookItem::ACTION_CLEAR, $cue->items()->firstOrFail()->action);
+        $this->assertSame('LowerThird', $cue->items()->firstOrFail()->section_key);
+    }
+
+    public function test_a_duplicate_copies_the_cells_and_lands_beneath_its_source(): void
+    {
+        $source = $this->show->looks()->orderBy('sort_order')->firstOrFail();
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $source->items()->create([
+            'section_key' => 'ScoreBug',
+            'action' => LookItem::ACTION_SET,
+            'asset_id' => $asset->id,
+        ]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('duplicate', $source->id);
+
+        $copy = $this->show->looks()->where('name', $source->name.' (copy)')->firstOrFail();
+
+        $this->assertSame(1, $copy->items()->count());
+        $this->assertSame('ScoreBug', $copy->items()->first()->section_key);
+        $this->assertSame($source->sort_order + 1, $copy->sort_order);
+
+        $orders = $this->show->looks()->orderBy('sort_order')->pluck('sort_order');
+        $this->assertSame($orders->unique()->count(), $orders->count());
+    }
+
+    public function test_moving_a_cue_swaps_it_with_its_neighbour(): void
+    {
+        $cues = $this->show->looks()->orderBy('sort_order')->get();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('move', $cues[1]->id, -1);
+
+        $reordered = $this->show->looks()->orderBy('sort_order')->pluck('id');
+
+        $this->assertSame($cues[1]->id, $reordered[0]);
+        $this->assertSame($cues[0]->id, $reordered[1]);
+    }
+
+    public function test_renaming_a_cue_keeps_its_cells(): void
+    {
+        $cue = $this->show->looks()->orderBy('sort_order')->firstOrFail();
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue->items()->create([
+            'section_key' => 'ScoreBug',
+            'action' => LookItem::ACTION_SET,
+            'asset_id' => $asset->id,
+        ]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('startRename', $cue->id)
+            ->set('renameValue', 'GLSS Heat 3')
+            ->call('rename');
+
+        $this->assertSame('GLSS Heat 3', $cue->refresh()->name);
+        $this->assertSame(1, $cue->items()->count());
+    }
+
+    public function test_deleting_the_live_cue_takes_the_show_off_air(): void
+    {
+        $cue = $this->show->looks()->firstOrFail();
+        $this->show->forceFill(['active_look_id' => $cue->id, 'preview_look_id' => $cue->id])->save();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('delete', $cue->id);
+
+        $this->show->refresh();
+
+        $this->assertNull($this->show->active_look_id);
+        $this->assertNull($this->show->preview_look_id);
+        $this->assertNull($this->show->looks()->find($cue->id));
+    }
+
+    protected function storeAsset(string $name, int $width, int $height): Asset
+    {
+        return app(AssetImporter::class)->import(
+            UploadedFile::fake()->image('art.png', $width, $height),
+            $name,
+        );
+    }
+}

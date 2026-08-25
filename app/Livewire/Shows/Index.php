@@ -2,9 +2,10 @@
 
 namespace App\Livewire\Shows;
 
+use App\Concerns\Toasts;
 use App\Models\Show;
-use App\Models\ShowTemplate;
-use Flux\Flux;
+use App\Services\Shows\DefaultLayout;
+use App\Support\Access;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -14,98 +15,81 @@ use Livewire\Component;
 #[Title('Broadcasts')]
 class Index extends Component
 {
+    use Toasts;
+
     #[Validate('required|string|max:120')]
     public string $name = '';
-
-    #[Validate('required|exists:show_templates,id')]
-    public ?int $showTemplateId = null;
 
     #[Validate('nullable|date')]
     public ?string $scheduledFor = null;
 
-    public function mount(): void
-    {
-        $this->showTemplateId = ShowTemplate::value('id');
-    }
+    public bool $creating = false;
 
     /** @return Collection<int, Show> */
     #[Computed]
     public function shows(): Collection
     {
-        return Show::with('showTemplate')
-            ->withCount('looks')
-            ->orderByDesc('scheduled_for')
-            ->orderByDesc('id')
+        return Show::withCount('looks')
+            ->orderBy('name')
             ->get();
-    }
-
-    /** @return Collection<int, ShowTemplate> */
-    #[Computed]
-    public function templates(): Collection
-    {
-        return ShowTemplate::orderBy('name')->get();
     }
 
     public function create(): void
     {
+        $this->authorize(Access::BROADCASTS_MANAGE);
         $this->validate();
 
         $show = Show::create([
-            'show_template_id' => $this->showTemplateId,
             'name' => $this->name,
-            'scheduled_for' => $this->scheduledFor,
+            'scheduled_for' => $this->scheduledFor ?: null,
         ]);
 
+        DefaultLayout::install($show);
+
         $this->reset('name', 'scheduledFor');
+        $this->creating = false;
         unset($this->shows);
 
-        Flux::modal('create-show')->close();
-        Flux::toast(variant: 'success', text: "Created {$show->name}.");
+        $this->toast("Created {$show->name}.");
     }
 
     /**
-     * Copy a broadcast for the next race night: same template, packs and cue
-     * stack, fresh identifier and empty live state.
-     */
-    /**
-     * Shows resolve by slug for routing, so actions take an id and look the
-     * record up explicitly rather than relying on implicit binding.
+     * Copy a box: same sections, cue stack and this box's text defaults. Text
+     * keys are already shared, so they are not copied. The new box gets its own
+     * identifier and empty live state.
      */
     public function duplicate(int $showId): void
     {
-        $show = Show::with('assetPacks')->findOrFail($showId);
+        $this->authorize(Access::BROADCASTS_MANAGE);
+        $show = Show::with(['sections', 'textDefaults'])->findOrFail($showId);
 
         $copy = Show::create([
-            'show_template_id' => $show->show_template_id,
             'name' => $show->name.' (copy)',
-            'scheduled_for' => $show->scheduled_for?->addWeek(),
+            'scheduled_for' => $show->scheduled_for,
         ]);
 
-        $copy->assetPacks()->sync(
-            $show->assetPacks->mapWithKeys(fn ($pack) => [$pack->id => ['sort_order' => $pack->pivot->sort_order]])->all()
-        );
+        DefaultLayout::copyFrom($show, $copy);
 
         foreach ($show->looks()->with('items')->get() as $look) {
             $newLook = $copy->looks()->create($look->only('name', 'kind', 'notes', 'sort_order'));
 
             foreach ($look->items as $item) {
-                $newLook->items()->create($item->only(
-                    'target_type', 'target_key', 'action', 'asset_id', 'role_key', 'text_value'
-                ));
+                $newLook->items()->create($item->only('section_key', 'action', 'asset_id'));
             }
         }
 
         unset($this->shows);
 
-        Flux::toast(variant: 'success', text: "Duplicated as {$copy->name}.");
+        $this->toast("Duplicated as {$copy->name}.");
     }
 
     public function delete(int $showId): void
     {
+        $this->authorize(Access::BROADCASTS_MANAGE);
         Show::findOrFail($showId)->delete();
 
         unset($this->shows);
 
-        Flux::toast(text: 'Broadcast deleted.');
+        $this->toast('Broadcast deleted.');
     }
 }

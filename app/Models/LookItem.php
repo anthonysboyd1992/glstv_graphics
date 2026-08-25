@@ -7,25 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
+ * One section's worth of a cue. Sections the cue says nothing about are left
+ * as they are when it is taken.
+ *
  * @property int $id
  * @property int $look_id
- * @property string $target_type
- * @property string $target_key
+ * @property string $section_key
  * @property string $action
  * @property int|null $asset_id
- * @property string|null $role_key
- * @property string|null $text_value
  */
-#[Fillable([
-    'look_id', 'target_type', 'target_key', 'action',
-    'asset_id', 'role_key', 'text_value',
-])]
+#[Fillable(['look_id', 'section_key', 'action', 'asset_id'])]
 class LookItem extends Model
 {
-    public const TARGET_SECTION = 'section';
-
-    public const TARGET_TEXT = 'text';
-
     public const ACTION_SET = 'set';
 
     public const ACTION_CLEAR = 'clear';
