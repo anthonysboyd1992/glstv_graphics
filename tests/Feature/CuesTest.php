@@ -138,7 +138,7 @@ class CuesTest extends TestCase
     public function test_the_asset_picker_renders_outside_the_scrolling_table(): void
     {
         Livewire::test(Cues::class, ['show' => $this->show])
-            ->assertSeeHtml('x-teleport="body"')
+            ->assertSeeHtml('popover')
             ->assertSee(__('Assets'));
     }
 

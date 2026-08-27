@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\Layout;
 use App\Models\Show;
 use App\Models\User;
+use App\Services\Assets\AssetImporter;
 use Database\Seeders\DirtTrackSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ScreensTest extends TestCase
@@ -88,6 +91,20 @@ class ScreensTest extends TestCase
         $response->assertOk();
         $this->assertSame('image/png', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_a_graphic_is_served_at_its_digest_url(): void
+    {
+        Storage::fake('local');
+
+        $asset = app(AssetImporter::class)->import(
+            UploadedFile::fake()->image('bug.png', 64, 64),
+            'bug',
+        );
+
+        $this->get($asset->publicPath())
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
     }
 
     public function test_rundown_feed_carries_one_row_per_cue(): void

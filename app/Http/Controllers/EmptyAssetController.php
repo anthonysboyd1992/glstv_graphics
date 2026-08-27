@@ -9,12 +9,15 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  *
  * vMix image fields keep the last graphic when the data source sends an empty
  * string. This file is a real image, so a title actually clears.
+ *
+ * Kept out of public/assets so nginx does not treat /assets as a static
+ * directory and 403 the content-addressed graphics that Laravel serves.
  */
 class EmptyAssetController extends Controller
 {
     public function __invoke(): BinaryFileResponse
     {
-        $path = public_path('assets/empty.png');
+        $path = resource_path('graphics/empty.png');
 
         abort_unless(is_file($path), 404);
 
