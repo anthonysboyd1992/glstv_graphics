@@ -15,7 +15,9 @@ class AuthenticationTest extends TestCase
     {
         $this->get(route('login'))
             ->assertOk()
-            ->assertDontSee('Sign up');
+            ->assertDontSee('Sign up')
+            ->assertSeeHtml('type="password"')
+            ->assertSeeHtml('autocomplete="current-password"');
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void

@@ -30,7 +30,8 @@
     @if ($viewable)
         <div x-data="{ show: false }" class="relative">
             <input
-                x-bind:type="show ? 'text' : 'password'"
+                type="{{ $type }}"
+                x-bind:type="show ? 'text' : @js($type)"
                 {{ $attributes->except('type')->merge(['class' => $classes.' pr-10']) }}
             />
             <button
