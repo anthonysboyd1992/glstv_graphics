@@ -174,7 +174,7 @@
                                             @if ($item && $item->action === \App\Models\LookItem::ACTION_CLEAR)
                                                 <x-ui.badge>{{ __('Clear') }}</x-ui.badge>
                                             @elseif ($item && $item->asset)
-                                                <img src="{{ $item->asset->url() }}" alt="{{ $item->asset->name }}" class="max-h-16 max-w-full object-contain" />
+                                                <img src="{{ $item->asset->original()->publicPath() }}" alt="{{ $item->asset->name }}" class="max-h-16 max-w-full object-contain" />
                                             @else
                                                 <span class="text-xs text-zinc-600">{{ __('—') }}</span>
                                             @endif
@@ -198,7 +198,7 @@
                                                 @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
                                                 @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
                                                 <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')" @click="open = false">
-                                                    <img src="{{ $asset->url() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
+                                                    <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
                                                     <span @class(['min-w-0 flex-1 truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
                                                     @if ($needsFit)
                                                         <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>

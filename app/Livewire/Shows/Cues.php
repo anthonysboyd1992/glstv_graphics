@@ -53,7 +53,7 @@ class Cues extends Component
     #[Computed]
     public function cues(): Collection
     {
-        return $this->show->looks()->with('items.asset')->get();
+        return $this->show->looks()->with('items.asset.source')->get();
     }
 
     #[Computed]

@@ -62,6 +62,15 @@ class Asset extends Model
     }
 
     /**
+     * Root-relative path for <img> tags. The browser loads it from the same
+     * host as the page, so a stale APP_URL cannot blank the cue grid.
+     */
+    public function publicPath(): string
+    {
+        return "/assets/{$this->sha256}.{$this->extension}";
+    }
+
+    /**
      * Absolute, content-addressed URL. The digest in the path means the URL only
      * changes when the image does, so vMix can cache it permanently.
      */
@@ -69,7 +78,16 @@ class Asset extends Model
     {
         $base = rtrim(config('broadcast.asset_base_url') ?: config('app.url'), '/');
 
-        return "{$base}/assets/{$this->sha256}.{$this->extension}";
+        return $base.$this->publicPath();
+    }
+
+    /**
+     * The uploaded graphic, not a size-fitted copy. Cue previews use this so a
+     * missing rendition does not look like an empty cell.
+     */
+    public function original(): self
+    {
+        return $this->source ?? $this;
     }
 
     public function dimensionLabel(): string

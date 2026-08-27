@@ -115,7 +115,22 @@ class CuesTest extends TestCase
         ]);
 
         Livewire::test(Cues::class, ['show' => $this->show])
-            ->assertSeeHtml($asset->url());
+            ->assertSeeHtml($asset->publicPath());
+    }
+
+    public function test_the_grid_previews_the_original_when_the_cell_stores_a_fitted_copy(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'asset:'.$asset->id)
+            ->assertSeeHtml($asset->publicPath());
+
+        $fitted = Asset::query()->findOrFail($cue->items()->value('asset_id'));
+
+        $this->assertNotSame($asset->id, $fitted->id);
+        $this->assertSame($asset->id, $fitted->source_asset_id);
     }
 
     public function test_choosing_an_off_size_asset_stores_a_fitted_copy(): void
