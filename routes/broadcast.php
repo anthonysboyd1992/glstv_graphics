@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AssetContentController;
 use App\Http\Controllers\DataSourceController;
+use App\Http\Controllers\EmptyAssetController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Route;
 | by the digest in the path.
 |
 */
+
+Route::get('assets/empty.png', EmptyAssetController::class)->name('assets.empty');
 
 Route::get('assets/{digest}.{extension}', AssetContentController::class)
     ->where('digest', '[a-f0-9]{64}')

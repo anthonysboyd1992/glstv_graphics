@@ -282,7 +282,10 @@
                                         <input
                                             type="text"
                                             wire:model="text.{{ $textKey->id }}"
-                                            @if ($canText) wire:keydown.enter="saveText({{ $textKey->id }})" @endif
+                                            @if ($canText)
+                                                wire:keydown.enter="saveText({{ $textKey->id }})"
+                                                wire:blur="saveText({{ $textKey->id }})"
+                                            @endif
                                             placeholder="{{ ($defaults[$textKey->id] ?? '') ?: __('Empty') }}"
                                             @readonly(! $canText)
                                             class="w-full rounded-md border-0 bg-transparent px-2 py-1.5 text-sm placeholder-zinc-500 focus:bg-zinc-900 focus:ring-1 focus:ring-zinc-600"

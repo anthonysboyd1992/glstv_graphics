@@ -450,7 +450,7 @@ class BoardTest extends TestCase
         $this->assertNull($this->show->preview_look_id);
     }
 
-    public function test_focusing_a_section_sorts_fitting_assets_first_without_hiding_the_rest(): void
+    public function test_focusing_a_section_keeps_assets_in_alphabetical_order(): void
     {
         $wide = $this->storeAsset('score-bug', 1920, 180);
         $square = $this->storeAsset('corner-mark', 500, 500);
@@ -460,11 +460,9 @@ class BoardTest extends TestCase
             ->assertSee($wide->name)
             ->assertSee($square->name);
 
-        $names = $component->instance()->assets->pluck('name')->all();
-
-        $this->assertLessThan(
-            array_search($square->name, $names, true),
-            array_search($wide->name, $names, true),
+        $this->assertSame(
+            ['corner-mark', 'score-bug'],
+            $component->instance()->assets->pluck('name')->all(),
         );
     }
 

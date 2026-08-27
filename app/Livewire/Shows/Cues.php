@@ -86,20 +86,17 @@ class Cues extends Component
     }
 
     /**
-     * Assets per column with the ones that fit that section first. Everything
-     * stays reachable; a mismatch is flagged rather than hidden.
-     *
      * @return array<string, Collection<int, Asset>>
      */
     #[Computed]
     public function assetsBySection(): array
     {
+        $sorted = $this->assets
+            ->sortBy(fn (Asset $asset) => $asset->name, SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
         return $this->sectionDefs
-            ->mapWithKeys(fn ($section) => [
-                $section->key => $this->assets
-                    ->sortByDesc(fn (Asset $asset) => $section->accepts($asset) ? 1 : 0)
-                    ->values(),
-            ])
+            ->mapWithKeys(fn ($section) => [$section->key => $sorted])
             ->all();
     }
 

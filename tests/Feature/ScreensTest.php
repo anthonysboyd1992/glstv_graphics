@@ -57,9 +57,37 @@ class ScreensTest extends TestCase
         $rows = $response->json();
 
         $this->assertCount(1, $rows);
-        $this->assertSame('', $rows[0]['ScoreBug']);
+        $this->assertStringContainsString('/assets/empty.png', $rows[0]['ScoreBug']);
         $this->assertSame("We'll Be Right Back", $rows[0]['Break.brb_message']);
         $this->assertArrayHasKey('Rundown.now_racing', $rows[0]);
+        $this->assertArrayHasKey('UpdatedAt', $rows[0]);
+        $response->assertHeader('Cache-Control');
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_clearing_a_section_publishes_a_fresh_empty_image_url(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $before = $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug'];
+
+        \Livewire\Livewire::test(\App\Livewire\Shows\Board::class, ['show' => $this->show])
+            ->call('clearSection', 'ScoreBug');
+
+        $after = $this->getJson($this->show->fresh()->dataSourceUrl('json'))->json()[0];
+
+        $this->assertStringContainsString('/assets/empty.png', $after['ScoreBug']);
+        $this->assertNotSame($before, $after['ScoreBug']);
+        $this->assertStringContainsString('#', $after['UpdatedAt']);
+    }
+
+    public function test_the_empty_image_is_not_cacheable(): void
+    {
+        $response = $this->get(route('assets.empty'));
+
+        $response->assertOk();
+        $this->assertSame('image/png', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
     public function test_rundown_feed_carries_one_cumulative_row_per_cue(): void

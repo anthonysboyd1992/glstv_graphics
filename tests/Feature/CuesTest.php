@@ -104,6 +104,23 @@ class CuesTest extends TestCase
         $this->assertSame(LookItem::ACTION_SET, $items[0]->action);
     }
 
+    public function test_the_asset_picker_lists_graphics_alphabetically(): void
+    {
+        $this->storeAsset('Zebra Plate', 100, 100);
+        $this->storeAsset('Alpha Bug', 200, 200);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        $names = Livewire::test(Cues::class, ['show' => $this->show])
+            ->instance()
+            ->assetsBySection['ScoreBug']
+            ->pluck('name')
+            ->all();
+
+        $this->assertSame(['Alpha Bug', 'Zebra Plate'], array_values(array_intersect($names, ['Alpha Bug', 'Zebra Plate'])));
+        $this->assertTrue(array_search('Alpha Bug', $names, true) < array_search('Zebra Plate', $names, true));
+        $this->assertNotNull($cue->id);
+    }
+
     public function test_the_grid_shows_the_picture_for_a_filled_cell(): void
     {
         $asset = $this->storeAsset('Score Bug', 1920, 180);

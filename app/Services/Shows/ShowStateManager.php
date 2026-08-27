@@ -266,7 +266,9 @@ class ShowStateManager
      */
     protected function persist(Show $show, array $state): Show
     {
+        $state['revision'] = ((int) ($show->current_state['revision'] ?? 0)) + 1;
         $show->current_state = $state;
+        $show->updated_at = now();
         $show->save();
 
         // Nothing is pushed to vMix. It polls the data source and picks the new

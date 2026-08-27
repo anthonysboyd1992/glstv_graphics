@@ -38,8 +38,14 @@ class DataSourceBuilder
 
         // Carried so you can confirm in the vMix Data Sources Manager that the
         // feed is actually refreshing, rather than guessing from the graphics.
+        // Revision changes on every board write, including two edits in the
+        // same second, which updated_at alone cannot distinguish.
         return $this->render($show, $state, $this->loadAssets([$state])) + [
-            'UpdatedAt' => $show->updated_at?->toIso8601String() ?? '',
+            'UpdatedAt' => sprintf(
+                '%s#%d',
+                $show->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                (int) ($show->current_state['revision'] ?? 0),
+            ),
         ];
     }
 
@@ -121,7 +127,7 @@ class DataSourceBuilder
 
             $row[$section->key] = $assetId && isset($assets[$assetId])
                 ? $assets[$assetId]->url()
-                : '';
+                : $this->emptyImageUrl($show);
         }
 
         foreach ($show->catalogTextKeys() as $textKey) {
@@ -202,6 +208,19 @@ class DataSourceBuilder
         }
 
         return Asset::whereIn('id', $ids)->get()->keyBy('id')->all();
+    }
+
+    /**
+     * vMix image inputs ignore a blank string and keep whatever they last
+     * loaded. A transparent PNG with a revision query string is a new URL
+     * when the slot is cleared, so the old graphic cannot stay cached.
+     */
+    protected function emptyImageUrl(Show $show): string
+    {
+        $base = rtrim(config('broadcast.asset_base_url') ?: config('app.url'), '/');
+        $revision = (int) ($show->current_state['revision'] ?? 0);
+
+        return $base.'/assets/empty.png?v='.$revision;
     }
 
     /**

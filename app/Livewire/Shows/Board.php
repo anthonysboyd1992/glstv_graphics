@@ -110,29 +110,23 @@ class Board extends Component
     }
 
     /**
-     * Assets offered in the grid. Focusing a section sorts the ones that fit it
-     * to the top rather than hiding the rest, because "wrong shape" is a warning
-     * worth seeing, not a reason to make a graphic unreachable mid-race.
+     * Assets offered in the routing grid, A–Z. Size mismatches stay in the list
+     * and are flagged on the take button rather than sorted away.
      *
      * @return Collection<int, Asset>
      */
     #[Computed]
     public function assets(): Collection
     {
-        $assets = Asset::query()
+        return Asset::query()
             ->originals()
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
-            ->orderBy('name')
+            ->orderByRaw('lower(name)')
+            ->orderBy('id')
             ->limit(200)
-            ->get();
-
-        $section = $this->focusSection
-            ? $this->sections->firstWhere('key', $this->focusSection)
-            : null;
-
-        return $section
-            ? $assets->sortByDesc(fn (Asset $asset) => $section->accepts($asset) ? 1 : 0)->values()
-            : $assets;
+            ->get()
+            ->sortBy(fn (Asset $asset) => $asset->name, SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
     }
 
     /**
@@ -257,7 +251,7 @@ class Board extends Component
         }
 
         $state->setText($this->show, $textKey->fieldName(), $this->text[$textKeyId] ?? null);
-        $this->show->refresh();
+        $this->afterStateChange();
 
         $this->toast(__('Updated :key.', ['key' => $textKey->fieldName()]));
     }

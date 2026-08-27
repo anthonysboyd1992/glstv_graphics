@@ -78,8 +78,9 @@ class DataSourceController extends Controller
         // vMix must never serve a cached copy of this; the whole point is that
         // it reflects the board right now.
         return [
-            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
+            'Expires' => '0',
         ];
     }
 }
