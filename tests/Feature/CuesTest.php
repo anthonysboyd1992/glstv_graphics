@@ -135,6 +135,13 @@ class CuesTest extends TestCase
             ->assertSeeHtml($asset->publicPath());
     }
 
+    public function test_the_asset_picker_renders_outside_the_scrolling_table(): void
+    {
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->assertSeeHtml('x-teleport="body"')
+            ->assertSee(__('Assets'));
+    }
+
     public function test_the_grid_previews_the_original_when_the_cell_stores_a_fitted_copy(): void
     {
         $asset = $this->storeAsset('Corner Mark', 500, 500);

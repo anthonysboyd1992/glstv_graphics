@@ -160,10 +160,31 @@
                             @foreach ($this->sectionDefs as $section)
                                 @php($item = $row[$section->key] ?? null)
                                 <td class="border-b border-r border-zinc-800 p-1 align-middle last:border-r-0">
-                                    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+                                    <div
+                                        class="relative"
+                                        @if ($canEdit)
+                                            x-data='{ open: false, top: 0, left: 0, cueId: {{ (int) $cue->id }}, sectionKey: @js($section->key) }'
+                                            @cue-picker-opened.window="if ($event.detail !== $root) open = false"
+                                            @keydown.escape.window="open = false"
+                                        @endif
+                                    >
                                         <button
                                             type="button"
-                                            @if ($canEdit) @click="open = ! open" @endif
+                                            @if ($canEdit)
+                                                x-ref="trigger"
+                                                @click="
+                                                    if (open) { open = false; return }
+                                                    $dispatch('cue-picker-opened', $root)
+                                                    const r = $refs.trigger.getBoundingClientRect()
+                                                    const width = 288
+                                                    const maxHeight = 320
+                                                    left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8)
+                                                    top = (window.innerHeight - r.bottom < 160 && r.top > window.innerHeight - r.bottom)
+                                                        ? Math.max(8, r.top - maxHeight - 4)
+                                                        : r.bottom + 4
+                                                    open = true
+                                                "
+                                            @endif
                                             @if ($item?->asset) title="{{ $item->asset->name }}" @endif
                                             @class([
                                                 'flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-zinc-950',
@@ -181,33 +202,37 @@
                                         </button>
 
                                         @if ($canEdit)
-                                        <div
-                                            x-show="open"
-                                            x-cloak
-                                            class="absolute z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
-                                        >
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')" @click="open = false">
-                                                {{ __('Empty') }}
-                                            </button>
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'clear')" @click="open = false">
-                                                {{ __('Clear the section') }}
-                                            </button>
-                                            <div class="my-1 border-t border-zinc-800"></div>
-                                            <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{{ __('Assets') }}</p>
-                                            @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
-                                                @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
-                                                @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
-                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')" @click="open = false">
-                                                    <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
-                                                    <span @class(['min-w-0 flex-1 truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
-                                                    @if ($needsFit)
-                                                        <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
-                                                    @endif
+                                        <template x-teleport="body">
+                                            <div
+                                                x-show="open"
+                                                x-cloak
+                                                @click.outside="if (! $refs.trigger.contains($event.target)) open = false"
+                                                class="fixed z-[80] max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+                                                :style="`top: ${top}px; left: ${left}px`"
+                                            >
+                                                <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" @click="open = false; $wire.setSection(cueId, sectionKey, 'leave')">
+                                                    {{ __('Empty') }}
                                                 </button>
-                                            @empty
-                                                <p class="px-3 py-1.5 text-sm text-zinc-500">{{ __('No assets stored yet') }}</p>
-                                            @endforelse
-                                        </div>
+                                                <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" @click="open = false; $wire.setSection(cueId, sectionKey, 'clear')">
+                                                    {{ __('Clear the section') }}
+                                                </button>
+                                                <div class="my-1 border-t border-zinc-800"></div>
+                                                <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{{ __('Assets') }}</p>
+                                                @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
+                                                    @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
+                                                    @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
+                                                    <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800" @click="open = false; $wire.setSection(cueId, sectionKey, 'asset:{{ $asset->id }}')">
+                                                        <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
+                                                        <span @class(['min-w-0 flex-1 truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
+                                                        @if ($needsFit)
+                                                            <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
+                                                        @endif
+                                                    </button>
+                                                @empty
+                                                    <p class="px-3 py-1.5 text-sm text-zinc-500">{{ __('No assets stored yet') }}</p>
+                                                @endforelse
+                                            </div>
+                                        </template>
                                         @endif
                                     </div>
                                 </td>
