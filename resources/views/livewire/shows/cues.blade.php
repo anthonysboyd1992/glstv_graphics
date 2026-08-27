@@ -187,8 +187,8 @@
                                         <div
                                             id="cue-picker-{{ $cue->id }}-{{ $section->key }}"
                                             popover
-                                            class="fixed m-0 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
-                                            style="inset: unset;"
+                                            class="fixed m-0 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 text-zinc-100 shadow-xl scheme-dark"
+                                            style="inset: unset; color-scheme: dark;"
                                             x-data
                                             x-on:toggle="
                                                 if ($event.newState !== 'open') return
@@ -201,10 +201,10 @@
                                                     : (r.bottom + 4) + 'px'
                                             "
                                         >
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')">
+                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')">
                                                 {{ __('Empty') }}
                                             </button>
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'clear')">
+                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'clear')">
                                                 {{ __('Clear the section') }}
                                             </button>
                                             <div class="my-1 border-t border-zinc-800"></div>
@@ -212,9 +212,9 @@
                                             @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
                                                 @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
                                                 @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
-                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')">
+                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')">
                                                     <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
-                                                    <span @class(['min-w-0 flex-1 truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
+                                                    <span @class(['min-w-0 flex-1 truncate', 'font-medium text-white' => $selected, 'text-zinc-200' => ! $selected])>{{ $asset->name }}</span>
                                                     @if ($needsFit)
                                                         <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
                                                     @endif
