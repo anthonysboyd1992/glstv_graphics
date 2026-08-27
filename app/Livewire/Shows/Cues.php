@@ -21,11 +21,11 @@ use Livewire\Component;
  * because captions change on their own clock and an operator should never lose
  * one they just typed because the next race came up.
  *
- * Every cell is three-state, which is the part that carries the weight. Blank
- * means leave whatever is on air alone, so a cue that only changes the lower
- * third is a row with one filled cell. That is also why edits save on the spot
- * rather than behind a form — authoring a night is dozens of small changes, and
- * a save button between each one would be the slowest part of the job.
+ * Every cell is a picture or empty. Go Live puts this row on air as-is, so a
+ * blank cell clears that section rather than holding the previous graphic.
+ * Edits save on the spot rather than behind a form — authoring a night is
+ * dozens of small changes, and a save button between each one would be the
+ * slowest part of the job.
  */
 #[Title('Cues')]
 class Cues extends Component

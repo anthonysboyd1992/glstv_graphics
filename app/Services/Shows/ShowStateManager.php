@@ -102,9 +102,9 @@ class ShowStateManager
     }
 
     /**
-     * Apply a cue. Sections the cue does not mention are deliberately left
-     * alone, which is what keeps "Heat 2" a one-picture change rather than a
-     * full redraw of the board.
+     * Apply a cue as a full picture of the board. Sections the cue does not
+     * set go empty, so a heat that only fills the score bug does not leave
+     * the previous corner mark on air.
      *
      * Text is not touched here. It runs on its own clock, and an operator who
      * has just typed a caution message should not lose it because the next cue
@@ -121,13 +121,17 @@ class ShowStateManager
 
     /**
      * What each section would show after taking this cue, without writing it.
-     * Unmentioned sections keep whatever is on air.
+     * Blank cells clear; only pictures named on the cue stay on air.
      *
      * @return array<string, array{asset_id: int|null}>
      */
     public function previewSections(Show $show, Look $look): array
     {
-        $sections = $this->normalise($show->current_state)['sections'];
+        $show->loadMissing('sections');
+
+        $sections = $show->sections
+            ->mapWithKeys(fn ($section) => [$section->key => ['asset_id' => null]])
+            ->all();
 
         foreach ($look->items as $item) {
             $sections[$item->section_key] = [

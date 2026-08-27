@@ -120,7 +120,7 @@ class BoardTest extends TestCase
         $this->assertNull($this->show->preview_look_id);
     }
 
-    public function test_a_cue_only_changes_the_sections_it_names(): void
+    public function test_taking_a_cue_clears_sections_it_does_not_set(): void
     {
         $look = $this->show->looks()->firstOrFail();
         $kept = $this->storeAsset('corner-mark', 500, 500);
@@ -144,10 +144,30 @@ class BoardTest extends TestCase
             ->call('take');
 
         $this->show->refresh();
+        $row = $this->getJson($this->show->dataSourceUrl('json'))->json()[0];
 
         $this->assertSame($incoming->id, $this->show->sectionAssetId('ScoreBug'));
-        $this->assertSame($kept->id, $this->show->sectionAssetId('UpperRight'));
+        $this->assertNull($this->show->sectionAssetId('UpperRight'));
         $this->assertSame('Rain hold', $this->show->textValue('announcement'));
+        $this->assertStringContainsString('/assets/empty.png', $row['UpperRight']);
+        $this->assertStringNotContainsString('/assets/empty.png', $row['ScoreBug']);
+    }
+
+    public function test_rundown_rows_do_not_inherit_pictures_from_the_previous_cue(): void
+    {
+        $looks = $this->show->looks()->get();
+        $asset = $this->storeAsset('score-bug', 1920, 180);
+
+        $looks[0]->items()->create([
+            'section_key' => 'ScoreBug',
+            'action' => LookItem::ACTION_SET,
+            'asset_id' => $asset->id,
+        ]);
+
+        $rows = $this->getJson($this->show->dataSourceUrl('json', 'rundown'))->json();
+
+        $this->assertStringNotContainsString('/assets/empty.png', $rows[0]['ScoreBug']);
+        $this->assertStringContainsString('/assets/empty.png', $rows[1]['ScoreBug']);
     }
 
     public function test_clearing_a_section_in_a_cue_empties_it(): void
@@ -227,14 +247,14 @@ class BoardTest extends TestCase
         $slots = Livewire::test(Board::class, ['show' => $this->show->fresh()])
             ->assertSee(__('Select a cue to preview the next pictures here.'))
             ->call('arm', $look->id)
-            ->assertSee(__('Pictures in this cue. Blank sections are left alone on air.'))
+            ->assertSee(__('Pictures in this cue. Blank sections go empty on air.'))
             ->instance()
             ->onDeckSlots;
 
         $this->assertSame($incoming->id, $slots['ScoreBug']['asset']?->id);
         $this->assertSame('set', $slots['ScoreBug']['change']);
         $this->assertNull($slots['UpperRight']['asset']?->id);
-        $this->assertSame('leave', $slots['UpperRight']['change']);
+        $this->assertSame('clear', $slots['UpperRight']['change']);
         $this->assertNull($this->show->refresh()->sectionAssetId('ScoreBug'));
         $this->assertSame($kept->id, $this->show->sectionAssetId('UpperRight'));
     }

@@ -4,7 +4,7 @@
         <div>
             <h1 class="text-2xl font-semibold tracking-tight">{{ __('Cues') }}</h1>
             <p class="mt-1 text-sm text-zinc-400">
-                {{ __('One row per cue, one column per section. A blank cell leaves whatever is on air alone.') }}
+                {{ __('One row per cue, one column per section. A blank cell goes empty when this cue goes live.') }}
             </p>
         </div>
 
@@ -187,7 +187,7 @@
                                             class="absolute z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
                                         >
                                             <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')" @click="open = false">
-                                                {{ __('Leave alone') }}
+                                                {{ __('Empty') }}
                                             </button>
                                             <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'clear')" @click="open = false">
                                                 {{ __('Clear the section') }}
@@ -219,7 +219,7 @@
         </div>
 
         <p class="text-xs text-zinc-500">
-            {{ __('Blank leaves a section untouched. Clear empties it. Cues never change text — that is typed live on the board.') }}
+            {{ __('Blank and Clear both empty the section when this cue goes live. Cues never change text — that is typed live on the board.') }}
         </p>
     @endif
 </div>

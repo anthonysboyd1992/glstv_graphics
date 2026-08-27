@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One section's worth of a cue. Sections the cue says nothing about are left
- * as they are when it is taken.
+ * One section's worth of a cue. Sections the cue says nothing about go empty
+ * when it is taken.
  *
  * @property int $id
  * @property int $look_id

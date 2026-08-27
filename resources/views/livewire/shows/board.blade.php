@@ -66,7 +66,7 @@
                 <h2 class="text-lg font-semibold">{{ __('On Deck') }}</h2>
                 <p class="text-sm text-zinc-400">
                     @if ($onDeckLook)
-                        {{ __('Pictures in this cue. Blank sections are left alone on air.') }}
+                        {{ __('Pictures in this cue. Blank sections go empty on air.') }}
                     @else
                         {{ __('Select a cue to preview the next pictures here.') }}
                     @endif

@@ -90,7 +90,7 @@ class ScreensTest extends TestCase
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
-    public function test_rundown_feed_carries_one_cumulative_row_per_cue(): void
+    public function test_rundown_feed_carries_one_row_per_cue(): void
     {
         $rows = $this->getJson($this->show->dataSourceUrl('json', 'rundown'))->assertOk()->json();
 

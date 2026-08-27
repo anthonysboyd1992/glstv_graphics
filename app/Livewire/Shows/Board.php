@@ -148,8 +148,8 @@ class Board extends Component
     }
 
     /**
-     * The on-deck cue's pictures, keyed by section. Unnamed sections stay
-     * empty here so clicking a cue shows that cue, not a hold of air.
+     * The on-deck cue's pictures, keyed by section. Blank cells preview as
+     * clear, because Go Live puts exactly this cue on air.
      *
      * @return array<string, array{asset: Asset|null, change: string}>
      */
@@ -169,11 +169,7 @@ class Board extends Component
 
                 $item = $changes->get($section->key);
 
-                if (! $item) {
-                    return [$section->key => ['asset' => null, 'change' => 'leave']];
-                }
-
-                if ($item->action === LookItem::ACTION_CLEAR) {
+                if (! $item || $item->action === LookItem::ACTION_CLEAR) {
                     return [$section->key => ['asset' => null, 'change' => 'clear']];
                 }
 

@@ -58,9 +58,9 @@ class DataSourceBuilder
     }
 
     /**
-     * One cumulative row per look. A look that only changes two fields still
-     * emits a complete row, since a consumer reading a single row has no way to
-     * know what the preceding cues left on screen.
+     * One complete row per cue. Blank cells on that cue are empty, matching
+     * what Go Live puts on air — a later cue does not inherit pictures from
+     * the one before it.
      *
      * @return array<int, array<string, string>>
      */
@@ -69,12 +69,11 @@ class DataSourceBuilder
         $show->loadMissing('sections', 'layout.textGroups.textKeys', 'textDefaults.textKey');
 
         $looks = $show->looks()->with('items')->get();
-        $state = $this->baseline($show);
+        $baseline = $this->baseline($show);
         $states = [];
 
         foreach ($looks as $look) {
-            $state = $this->apply($state, $look);
-            $states[] = $state;
+            $states[] = $this->apply($baseline, $look);
         }
 
         $assets = $this->loadAssets($states);
@@ -163,13 +162,18 @@ class DataSourceBuilder
      */
     protected function apply(array $state, Look $look): array
     {
+        $next = $state;
+        $next['sections'] = collect($state['sections'])
+            ->map(fn () => ['asset_id' => null])
+            ->all();
+
         foreach ($look->items as $item) {
-            $state['sections'][$item->section_key] = [
+            $next['sections'][$item->section_key] = [
                 'asset_id' => $item->action === LookItem::ACTION_CLEAR ? null : $item->asset_id,
             ];
         }
 
-        return $state;
+        return $next;
     }
 
     /**
