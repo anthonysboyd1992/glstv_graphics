@@ -24,6 +24,20 @@ class AssetLibraryTest extends TestCase
         Storage::fake('local');
     }
 
+    public function test_the_library_lists_assets_alphabetically(): void
+    {
+        app(AssetImporter::class)->import(UploadedFile::fake()->image('z.png', 100, 100), 'Zebra Plate');
+        app(AssetImporter::class)->import(UploadedFile::fake()->image('a.png', 200, 200), 'Alpha Bug');
+
+        $html = Livewire::test(Library::class)->html();
+        $alpha = strpos($html, 'Alpha Bug');
+        $zebra = strpos($html, 'Zebra Plate');
+
+        $this->assertNotFalse($alpha);
+        $this->assertNotFalse($zebra);
+        $this->assertTrue($alpha < $zebra);
+    }
+
     public function test_renaming_changes_the_label_but_not_the_address(): void
     {
         $asset = $this->storeAsset('Score Bug');

@@ -47,7 +47,8 @@ class Library extends Component
                 $query->where('name', 'like', '%'.$this->search.'%')
                     ->orWhere('original_filename', 'like', '%'.$this->search.'%');
             }))
-            ->orderByDesc('id')
+            ->orderBy('name')
+            ->orderBy('id')
             ->paginate(24);
     }
 
