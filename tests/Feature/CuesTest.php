@@ -113,7 +113,7 @@ class CuesTest extends TestCase
 
         $names = Livewire::test(Cues::class, ['show' => $this->show])
             ->instance()
-            ->assetsBySection['ScoreBug']
+            ->assets
             ->pluck('name')
             ->all();
 
@@ -140,11 +140,14 @@ class CuesTest extends TestCase
 
     public function test_the_asset_picker_renders_outside_the_scrolling_table(): void
     {
-        Livewire::test(Cues::class, ['show' => $this->show])
+        $html = Livewire::test(Cues::class, ['show' => $this->show])
             ->assertSeeHtml('popover')
             ->assertSee(__('Assets'))
             ->assertSee(__('Every section'))
-            ->assertSeeHtml('fillCue(');
+            ->assertSeeHtml('$wire.fillCue')
+            ->html();
+
+        $this->assertSame(1, substr_count($html, 'id="cue-picker"'));
     }
 
     public function test_the_grid_previews_the_original_when_the_cell_stores_a_fitted_copy(): void
@@ -188,6 +191,27 @@ class CuesTest extends TestCase
                 $this->assertSame($section->height, $item->asset->height);
             }
         }
+    }
+
+    public function test_fill_cue_reuses_sized_copies_already_fitted(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+        $other = $this->show->looks()->create(['name' => 'GLSS Heat 2 extra', 'sort_order' => 100]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cue->id, 'asset:'.$asset->id);
+
+        $count = Asset::count();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $other->id, 'asset:'.$asset->id);
+
+        $this->assertSame($count, Asset::count());
+        $this->assertSame(
+            $cue->items()->orderBy('section_key')->pluck('asset_id')->all(),
+            $other->items()->orderBy('section_key')->pluck('asset_id')->all(),
+        );
     }
 
     public function test_fill_cue_can_empty_or_clear_every_section(): void

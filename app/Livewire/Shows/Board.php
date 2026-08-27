@@ -198,11 +198,10 @@ class Board extends Component
         $this->authorize(Access::BOARD_TAKE);
 
         $asset = Asset::query()->findOrFail($assetId);
-        $map = [];
-
-        foreach ($this->sections as $section) {
-            $map[$section->key] = $scaler->fitToSection($asset, $section)->id;
-        }
+        $map = array_map(
+            fn (Asset $fitted) => $fitted->id,
+            $scaler->fitToSections($asset, $this->sections),
+        );
 
         $state->setSections($this->show, $map);
         $this->afterStateChange();

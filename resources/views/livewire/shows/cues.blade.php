@@ -57,6 +57,46 @@
             </div>
         @endif
 
+        <div
+            x-data="{
+                cueId: null,
+                sectionKey: '',
+                fillRow: false,
+                selectedSourceId: null,
+                sectionSizes: {{ \Illuminate\Support\Js::from($this->sectionDefs->mapWithKeys(fn ($section) => [$section->key => ['w' => $section->width, 'h' => $section->height]])) }},
+                openPicker(cueId, sectionKey, selectedSourceId, trigger) {
+                    this.cueId = cueId
+                    this.sectionKey = sectionKey
+                    this.selectedSourceId = selectedSourceId
+                    this.fillRow = false
+                    const picker = document.getElementById('cue-picker')
+                    const r = trigger.getBoundingClientRect()
+                    const width = 288
+                    const maxHeight = 320
+                    picker.style.left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8) + 'px'
+                    picker.style.top = (window.innerHeight - r.bottom < 160 && r.top > window.innerHeight - r.bottom)
+                        ? Math.max(8, r.top - maxHeight - 4) + 'px'
+                        : (r.bottom + 4) + 'px'
+                    picker.showPopover()
+                },
+                needsFit(width, height) {
+                    const size = this.sectionSizes[this.sectionKey]
+                    return Boolean(size?.w && size?.h && (size.w !== width || size.h !== height))
+                },
+                sizeLabel() {
+                    const size = this.sectionSizes[this.sectionKey]
+                    return size?.w ? size.w + 'x' + size.h : ''
+                },
+                choose(value, shiftKey) {
+                    if (this.fillRow || shiftKey) {
+                        this.$wire.fillCue(this.cueId, value)
+                    } else {
+                        this.$wire.setSection(this.cueId, this.sectionKey, value)
+                    }
+                    document.getElementById('cue-picker').hidePopover()
+                },
+            }"
+        >
         <div class="overflow-x-auto rounded-xl border border-zinc-800">
             <table class="min-w-full border-collapse text-sm">
                 <thead>
@@ -94,7 +134,7 @@
                         @php($isLive = $show->active_look_id === $cue->id)
                         @php($isOnDeck = $show->preview_look_id === $cue->id)
 
-                        <tr class="hover:bg-zinc-900/60">
+                        <tr class="hover:bg-zinc-900/60" wire:key="cue-{{ $cue->id }}">
                             <td @class([
                                 'sticky left-0 z-10 border-b border-r border-zinc-800 px-3 py-2 align-top',
                                 'bg-red-950/50' => $isLive,
@@ -159,13 +199,14 @@
 
                             @foreach ($this->sectionDefs as $section)
                                 @php($item = $row[$section->key] ?? null)
+                                @php($preview = $item?->asset?->original())
                                 <td class="border-b border-r border-zinc-800 p-1 align-middle last:border-r-0">
                                     <div class="relative">
                                         <button
                                             type="button"
                                             @if ($canEdit)
                                                 id="cue-trigger-{{ $cue->id }}-{{ $section->key }}"
-                                                popovertarget="cue-picker-{{ $cue->id }}-{{ $section->key }}"
+                                                x-on:click="openPicker({{ $cue->id }}, '{{ $section->key }}', {{ $preview->id ?? 'null' }}, $el)"
                                             @endif
                                             @if ($item?->asset) title="{{ $item->asset->name }}" @endif
                                             @class([
@@ -187,15 +228,15 @@
 
                                             @if ($item && $item->action === \App\Models\LookItem::ACTION_CLEAR)
                                                 <x-ui.badge>{{ __('Clear') }}</x-ui.badge>
-                                            @elseif ($item && $item->asset)
+                                            @elseif ($preview)
                                                 <span
-                                                    wire:key="cue-thumb-{{ $cue->id }}-{{ $section->key }}-{{ $item->asset->original()->id }}"
+                                                    wire:key="cue-thumb-{{ $cue->id }}-{{ $section->key }}-{{ $preview->id }}"
                                                     class="relative flex h-full w-full items-center justify-center"
                                                     x-data="{ ready: false }"
                                                 >
                                                     <img
-                                                        src="{{ $item->asset->original()->publicPath() }}"
-                                                        alt="{{ $item->asset->name }}"
+                                                        src="{{ $preview->publicPath() }}"
+                                                        alt="{{ $preview->name }}"
                                                         class="max-h-16 max-w-full object-contain transition-opacity duration-150"
                                                         x-init="ready = $el.complete && $el.naturalWidth > 0"
                                                         x-on:load="ready = true"
@@ -215,54 +256,6 @@
                                                 <span class="text-xs text-zinc-600">{{ __('—') }}</span>
                                             @endif
                                         </button>
-
-                                        @if ($canEdit)
-                                        <div
-                                            id="cue-picker-{{ $cue->id }}-{{ $section->key }}"
-                                            popover
-                                            class="fixed m-0 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 text-zinc-100 shadow-xl scheme-dark"
-                                            style="inset: unset; color-scheme: dark;"
-                                            x-data="{ fillRow: false }"
-                                            x-on:toggle="
-                                                if ($event.newState !== 'open') return
-                                                fillRow = false
-                                                const r = document.getElementById('cue-trigger-{{ $cue->id }}-{{ $section->key }}').getBoundingClientRect()
-                                                const width = 288
-                                                const maxHeight = 320
-                                                $el.style.left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8) + 'px'
-                                                $el.style.top = (window.innerHeight - r.bottom < 160 && r.top > window.innerHeight - r.bottom)
-                                                    ? Math.max(8, r.top - maxHeight - 4) + 'px'
-                                                    : (r.bottom + 4) + 'px'
-                                            "
-                                        >
-                                            <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
-                                                <input type="checkbox" class="size-3.5 rounded border-zinc-600 bg-zinc-900 text-white focus:ring-zinc-500" x-model="fillRow" />
-                                                {{ __('Every section') }}
-                                                <span class="text-[10px] text-zinc-600">{{ __('or Shift-click') }}</span>
-                                            </label>
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'leave') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'leave'); $el.closest('[popover]').hidePopover()">
-                                                {{ __('Empty') }}
-                                            </button>
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'clear') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'clear'); $el.closest('[popover]').hidePopover()">
-                                                {{ __('Clear the section') }}
-                                            </button>
-                                            <div class="my-1 border-t border-zinc-800"></div>
-                                            <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{{ __('Assets') }}</p>
-                                            @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
-                                                @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
-                                                @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
-                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'asset:{{ $asset->id }}') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}'); $el.closest('[popover]').hidePopover()">
-                                                    <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
-                                                    <span @class(['min-w-0 flex-1 truncate', 'font-medium text-white' => $selected, 'text-zinc-200' => ! $selected])>{{ $asset->name }}</span>
-                                                    @if ($needsFit)
-                                                        <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
-                                                    @endif
-                                                </button>
-                                            @empty
-                                                <p class="px-3 py-1.5 text-sm text-zinc-500">{{ __('No assets stored yet') }}</p>
-                                            @endforelse
-                                        </div>
-                                        @endif
                                     </div>
                                 </td>
                             @endforeach
@@ -272,8 +265,41 @@
             </table>
         </div>
 
+        @if ($canEdit)
+            <div
+                id="cue-picker"
+                popover
+                class="fixed m-0 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 text-zinc-100 shadow-xl scheme-dark"
+                style="inset: unset; color-scheme: dark;"
+            >
+                <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
+                    <input type="checkbox" class="size-3.5 rounded border-zinc-600 bg-zinc-900 text-white focus:ring-zinc-500" x-model="fillRow" />
+                    {{ __('Every section') }}
+                    <span class="text-[10px] text-zinc-600">{{ __('or Shift-click') }}</span>
+                </label>
+                <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="choose('leave', $event.shiftKey)">
+                    {{ __('Empty') }}
+                </button>
+                <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="choose('clear', $event.shiftKey)">
+                    {{ __('Clear the section') }}
+                </button>
+                <div class="my-1 border-t border-zinc-800"></div>
+                <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{{ __('Assets') }}</p>
+                @forelse ($this->assets as $asset)
+                    <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800 hover:text-white" x-on:click="choose('asset:{{ $asset->id }}', $event.shiftKey)">
+                        <img src="{{ $asset->publicPath() }}" alt="" loading="lazy" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
+                        <span class="min-w-0 flex-1 truncate" x-bind:class="selectedSourceId === {{ $asset->id }} ? 'font-medium text-white' : 'text-zinc-200'">{{ $asset->name }}</span>
+                        <span class="shrink-0 text-xs text-amber-400" x-show="needsFit({{ $asset->width ?? 'null' }}, {{ $asset->height ?? 'null' }})" x-text="sizeLabel()"></span>
+                    </button>
+                @empty
+                    <p class="px-3 py-1.5 text-sm text-zinc-500">{{ __('No assets stored yet') }}</p>
+                @endforelse
+            </div>
+        @endif
+
         <p class="text-xs text-zinc-500">
             {{ __('Blank and Clear both empty the section when this cue goes live. Tick Every section, or hold Shift, to put the same graphic on the whole cue. Cues never change text — that is typed live on the board.') }}
         </p>
+        </div>
     @endif
 </div>

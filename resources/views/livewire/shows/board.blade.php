@@ -390,8 +390,10 @@
                                         @if ($canTake)
                                             <button
                                                 type="button"
-                                                class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:bg-zinc-800 hover:text-white"
+                                                class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:bg-zinc-800 hover:text-white disabled:opacity-50"
                                                 wire:click="assignAll({{ $asset->id }})"
+                                                wire:loading.attr="disabled"
+                                                wire:target="assignAll({{ $asset->id }})"
                                                 title="{{ __('Put :asset on every section.', ['asset' => $asset->name]) }}"
                                             >
                                                 {{ __('All') }}

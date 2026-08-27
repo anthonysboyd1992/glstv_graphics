@@ -85,22 +85,11 @@ class Cues extends Component
     #[Computed]
     public function assets(): Collection
     {
-        return Asset::query()->originals()->orderBy('name')->get();
-    }
-
-    /**
-     * @return array<string, Collection<int, Asset>>
-     */
-    #[Computed]
-    public function assetsBySection(): array
-    {
-        $sorted = $this->assets
+        return Asset::query()
+            ->originals()
+            ->get()
             ->sortBy(fn (Asset $asset) => $asset->name, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
-
-        return $this->sectionDefs
-            ->mapWithKeys(fn ($section) => [$section->key => $sorted])
-            ->all();
     }
 
     public function add(): void
@@ -337,37 +326,53 @@ class Cues extends Component
             ->all();
     }
 
-    protected function sizedAssetId(int $assetId, string $sectionKey, AssetScaler $scaler): int
-    {
-        $asset = Asset::query()->findOrFail($assetId);
-        $section = $this->sectionDefs->firstWhere('key', $sectionKey);
-
-        return $section
-            ? $scaler->fitToSection($asset, $section)->id
-            : $asset->id;
-    }
-
     /**
      * @param  array<string, string>  $values
      */
     protected function writeCells(Look $cue, array $values, AssetScaler $scaler): void
     {
-        foreach ($values as $sectionKey => $value) {
-            $cue->items()->where('section_key', $sectionKey)->delete();
+        $fitted = [];
+        $assetValue = collect($values)->first(fn (string $value) => str_starts_with($value, 'asset:'));
 
-            $attributes = match (true) {
-                $value === 'leave' => null,
-                $value === 'clear' => ['action' => LookItem::ACTION_CLEAR],
+        if (is_string($assetValue)) {
+            $asset = Asset::query()->findOrFail((int) substr($assetValue, 6));
+            $sections = $this->sectionDefs->whereIn(
+                'key',
+                collect($values)->filter(fn (string $value) => str_starts_with($value, 'asset:'))->keys()->all(),
+            );
+            $fitted = $scaler->fitToSections($asset, $sections);
+        }
+
+        $cue->items()->whereIn('section_key', array_keys($values))->delete();
+
+        $now = now();
+        $rows = [];
+
+        foreach ($values as $sectionKey => $value) {
+            $row = match (true) {
+                $value === 'clear' => [
+                    'action' => LookItem::ACTION_CLEAR,
+                    'asset_id' => null,
+                ],
                 str_starts_with($value, 'asset:') => [
                     'action' => LookItem::ACTION_SET,
-                    'asset_id' => $this->sizedAssetId((int) substr($value, 6), $sectionKey, $scaler),
+                    'asset_id' => $fitted[$sectionKey]->id,
                 ],
                 default => null,
             };
 
-            if ($attributes !== null) {
-                $cue->items()->create($attributes + ['section_key' => $sectionKey]);
+            if ($row !== null) {
+                $rows[] = $row + [
+                    'look_id' => $cue->id,
+                    'section_key' => $sectionKey,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
             }
+        }
+
+        if ($rows !== []) {
+            LookItem::insert($rows);
         }
     }
 

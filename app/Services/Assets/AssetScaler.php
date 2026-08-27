@@ -19,27 +19,66 @@ class AssetScaler
      */
     public function fitToSection(Asset $asset, Section $section): Asset
     {
-        if (! $section->hasDimensions()) {
-            return $asset;
-        }
+        return $this->fitToSections($asset, [$section])[$section->key];
+    }
 
-        if ($asset->width === $section->width && $asset->height === $section->height) {
-            return $asset;
-        }
-
+    /**
+     * Fit one graphic to many slots, reusing sized copies and rendering
+     * each missing size once.
+     *
+     * @param  iterable<int, Section>  $sections
+     * @return array<string, Asset>
+     */
+    public function fitToSections(Asset $asset, iterable $sections): array
+    {
         $source = $this->original($asset);
+        $map = [];
+        $needed = [];
+
+        foreach ($sections as $section) {
+            if (! $section->hasDimensions()) {
+                $map[$section->key] = $asset;
+
+                continue;
+            }
+
+            if ($asset->width === $section->width && $asset->height === $section->height) {
+                $map[$section->key] = $asset;
+
+                continue;
+            }
+
+            $needed[$section->key] = $section;
+        }
+
+        if ($needed === []) {
+            return $map;
+        }
 
         $existing = Asset::query()
             ->where('source_asset_id', $source->id)
-            ->where('width', $section->width)
-            ->where('height', $section->height)
-            ->first();
+            ->where(function ($query) use ($needed) {
+                foreach ($needed as $section) {
+                    $query->orWhere(function ($query) use ($section) {
+                        $query->where('width', $section->width)->where('height', $section->height);
+                    });
+                }
+            })
+            ->get()
+            ->unique(fn (Asset $copy) => $copy->width.'x'.$copy->height)
+            ->keyBy(fn (Asset $copy) => $copy->width.'x'.$copy->height);
 
-        if ($existing) {
-            return $existing;
+        foreach ($needed as $key => $section) {
+            $size = $section->width.'x'.$section->height;
+
+            if (! isset($existing[$size])) {
+                $existing[$size] = $this->render($source, $section->width, $section->height);
+            }
+
+            $map[$key] = $existing[$size];
         }
 
-        return $this->render($source, $section->width, $section->height);
+        return $map;
     }
 
     /**
