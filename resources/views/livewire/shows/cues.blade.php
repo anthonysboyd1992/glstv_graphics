@@ -177,7 +177,7 @@
                                             @if ($canEdit)
                                                 <span
                                                     wire:loading.flex
-                                                    wire:target="setSection({{ $cue->id }}, '{{ $section->key }}')"
+                                                    wire:target="setSection({{ $cue->id }}, '{{ $section->key }}'), fillCue({{ $cue->id }})"
                                                     class="absolute inset-0 z-20 items-center justify-center bg-zinc-950/80"
                                                     aria-hidden="true"
                                                 >
@@ -222,9 +222,10 @@
                                             popover
                                             class="fixed m-0 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 text-zinc-100 shadow-xl scheme-dark"
                                             style="inset: unset; color-scheme: dark;"
-                                            x-data
+                                            x-data="{ fillRow: false }"
                                             x-on:toggle="
                                                 if ($event.newState !== 'open') return
+                                                fillRow = false
                                                 const r = document.getElementById('cue-trigger-{{ $cue->id }}-{{ $section->key }}').getBoundingClientRect()
                                                 const width = 288
                                                 const maxHeight = 320
@@ -234,10 +235,15 @@
                                                     : (r.bottom + 4) + 'px'
                                             "
                                         >
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')">
+                                            <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
+                                                <input type="checkbox" class="size-3.5 rounded border-zinc-600 bg-zinc-900 text-white focus:ring-zinc-500" x-model="fillRow" />
+                                                {{ __('Every section') }}
+                                                <span class="text-[10px] text-zinc-600">{{ __('or Shift-click') }}</span>
+                                            </label>
+                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'leave') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'leave'); $el.closest('[popover]').hidePopover()">
                                                 {{ __('Empty') }}
                                             </button>
-                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'clear')">
+                                            <button type="button" class="block w-full px-3 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'clear') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'clear'); $el.closest('[popover]').hidePopover()">
                                                 {{ __('Clear the section') }}
                                             </button>
                                             <div class="my-1 border-t border-zinc-800"></div>
@@ -245,7 +251,7 @@
                                             @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
                                                 @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
                                                 @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
-                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800 hover:text-white" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')">
+                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800 hover:text-white" x-on:click="(fillRow || $event.shiftKey) ? $wire.fillCue({{ $cue->id }}, 'asset:{{ $asset->id }}') : $wire.setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}'); $el.closest('[popover]').hidePopover()">
                                                     <img src="{{ $asset->publicPath() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
                                                     <span @class(['min-w-0 flex-1 truncate', 'font-medium text-white' => $selected, 'text-zinc-200' => ! $selected])>{{ $asset->name }}</span>
                                                     @if ($needsFit)
@@ -267,7 +273,7 @@
         </div>
 
         <p class="text-xs text-zinc-500">
-            {{ __('Blank and Clear both empty the section when this cue goes live. Cues never change text — that is typed live on the board.') }}
+            {{ __('Blank and Clear both empty the section when this cue goes live. Tick Every section, or hold Shift, to put the same graphic on the whole cue. Cues never change text — that is typed live on the board.') }}
         </p>
     @endif
 </div>

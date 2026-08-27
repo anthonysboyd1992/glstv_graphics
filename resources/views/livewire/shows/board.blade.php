@@ -383,10 +383,20 @@
                                 <td class="sticky left-0 z-10 bg-zinc-950 px-4 py-2">
                                     <div class="flex items-center gap-3">
                                         <img src="{{ $asset->url() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-900 object-contain" />
-                                        <div class="min-w-0">
+                                        <div class="min-w-0 flex-1">
                                             <div class="truncate font-medium">{{ $asset->name }}</div>
                                             <div class="text-xs text-zinc-500">{{ $asset->dimensionLabel() }}</div>
                                         </div>
+                                        @if ($canTake)
+                                            <button
+                                                type="button"
+                                                class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:bg-zinc-800 hover:text-white"
+                                                wire:click="assignAll({{ $asset->id }})"
+                                                title="{{ __('Put :asset on every section.', ['asset' => $asset->name]) }}"
+                                            >
+                                                {{ __('All') }}
+                                            </button>
+                                        @endif
                                     </div>
                                 </td>
                                 @foreach ($this->sections as $section)

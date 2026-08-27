@@ -8,6 +8,7 @@ use App\Models\LookItem;
 use App\Models\Show;
 use App\Models\User;
 use App\Services\Assets\AssetImporter;
+use App\Services\Shows\ShowStateManager;
 use Database\Seeders\DirtTrackSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -141,7 +142,9 @@ class CuesTest extends TestCase
     {
         Livewire::test(Cues::class, ['show' => $this->show])
             ->assertSeeHtml('popover')
-            ->assertSee(__('Assets'));
+            ->assertSee(__('Assets'))
+            ->assertSee(__('Every section'))
+            ->assertSeeHtml('fillCue(');
     }
 
     public function test_the_grid_previews_the_original_when_the_cell_stores_a_fitted_copy(): void
@@ -157,6 +160,101 @@ class CuesTest extends TestCase
 
         $this->assertNotSame($asset->id, $fitted->id);
         $this->assertSame($asset->id, $fitted->source_asset_id);
+    }
+
+    public function test_fill_cue_puts_the_asset_on_every_section_fitted_to_each_slot(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cue->id, 'asset:'.$asset->id);
+
+        $items = $cue->items()->with('asset')->get()->keyBy('section_key');
+
+        $this->assertCount($this->show->sections->count(), $items);
+
+        foreach ($this->show->sections as $section) {
+            $item = $items->get($section->key);
+
+            $this->assertNotNull($item, $section->key);
+            $this->assertSame(LookItem::ACTION_SET, $item->action);
+
+            if ($section->isExactSize($asset)) {
+                $this->assertSame($asset->id, $item->asset_id);
+            } else {
+                $this->assertSame($asset->id, $item->asset->source_asset_id);
+                $this->assertSame($section->width, $item->asset->width);
+                $this->assertSame($section->height, $item->asset->height);
+            }
+        }
+    }
+
+    public function test_fill_cue_can_empty_or_clear_every_section(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cue->id, 'asset:'.$asset->id)
+            ->call('fillCue', $cue->id, 'leave');
+
+        $this->assertSame(0, $cue->items()->count());
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cue->id, 'clear');
+
+        $clears = $cue->items()->get();
+
+        $this->assertCount($this->show->sections->count(), $clears);
+        $this->assertSame(
+            $this->show->sections->pluck('key')->sort()->values()->all(),
+            $clears->pluck('section_key')->sort()->values()->all(),
+        );
+        $this->assertTrue($clears->every(fn (LookItem $item) => $item->action === LookItem::ACTION_CLEAR));
+    }
+
+    public function test_filling_the_live_cue_updates_the_feed_on_every_section(): void
+    {
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+        $cue = $this->show->looks()->firstOrFail();
+
+        app(ShowStateManager::class)->applyLook($this->show, $cue);
+        $this->show->refresh();
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cue->id, 'asset:'.$asset->id);
+
+        $this->show->refresh();
+        $row = $this->getJson($this->show->dataSourceUrl('json'))->json()[0];
+
+        $this->assertSame($cue->id, $this->show->active_look_id);
+
+        foreach ($this->show->sections as $section) {
+            $item = $cue->items()->where('section_key', $section->key)->firstOrFail();
+
+            $this->assertSame($item->asset_id, $this->show->sectionAssetId($section->key));
+            $this->assertStringNotContainsString('/assets/empty.png', $row[$section->key]);
+        }
+    }
+
+    public function test_filling_a_cue_that_is_not_live_leaves_the_feed_alone(): void
+    {
+        $cues = $this->show->looks()->orderBy('sort_order')->get();
+        $asset = $this->storeAsset('Corner Mark', 500, 500);
+
+        app(ShowStateManager::class)->applyLook($this->show, $cues[0]);
+        $this->show->refresh();
+
+        $beforeState = $this->show->current_state;
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('fillCue', $cues[1]->id, 'asset:'.$asset->id);
+
+        $this->show->refresh();
+
+        $this->assertSame($cues[0]->id, $this->show->active_look_id);
+        $this->assertSame($beforeState, $this->show->current_state);
     }
 
     public function test_choosing_an_off_size_asset_stores_a_fitted_copy(): void
@@ -204,7 +302,7 @@ class CuesTest extends TestCase
         $asset = $this->storeAsset('Score Bug', 1920, 180);
         $cue = $this->show->looks()->firstOrFail();
 
-        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cue);
+        app(ShowStateManager::class)->applyLook($this->show, $cue);
         $this->show->refresh();
 
         $before = $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug'];
@@ -233,7 +331,7 @@ class CuesTest extends TestCase
             'asset_id' => $asset->id,
         ]);
 
-        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cue->load('items'));
+        app(ShowStateManager::class)->applyLook($this->show, $cue->load('items'));
         $this->show->refresh();
 
         $this->assertStringNotContainsString(
@@ -257,7 +355,7 @@ class CuesTest extends TestCase
         $cues = $this->show->looks()->orderBy('sort_order')->get();
         $asset = $this->storeAsset('Score Bug', 1920, 180);
 
-        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cues[0]);
+        app(ShowStateManager::class)->applyLook($this->show, $cues[0]);
         $this->show->refresh();
 
         $beforeState = $this->show->current_state;

@@ -207,6 +207,36 @@ class BoardTest extends TestCase
         $this->assertSame($asset->id, $this->show->sectionAssetId('ScoreBug'));
     }
 
+    public function test_assign_all_puts_the_graphic_on_every_section_and_drops_the_rundown(): void
+    {
+        $asset = $this->storeAsset('corner-mark', 500, 500);
+        $look = $this->show->looks()->firstOrFail();
+
+        Livewire::test(Board::class, ['show' => $this->show])
+            ->assertSeeHtml('assignAll(')
+            ->call('arm', $look->id)
+            ->call('take')
+            ->call('assignAll', $asset->id);
+
+        $this->show->refresh();
+
+        $this->assertNull($this->show->active_look_id);
+
+        foreach ($this->show->sections as $section) {
+            $assigned = Asset::query()->find($this->show->sectionAssetId($section->key));
+
+            $this->assertNotNull($assigned, $section->key);
+
+            if ($section->isExactSize($asset)) {
+                $this->assertSame($asset->id, $assigned->id);
+            } else {
+                $this->assertSame($asset->id, $assigned->source_asset_id);
+                $this->assertSame($section->width, $assigned->width);
+                $this->assertSame($section->height, $assigned->height);
+            }
+        }
+    }
+
     public function test_taking_a_cue_puts_its_asset_on_air(): void
     {
         $asset = $this->storeAsset('sprint-logo', 500, 500);
@@ -551,6 +581,16 @@ class BoardTest extends TestCase
 
         Livewire::test(Board::class, ['show' => $this->show])
             ->call('assign', 'ScoreBug', $bug->id)
+            ->assertForbidden();
+    }
+
+    public function test_graphics_cannot_assign_an_asset_to_every_section(): void
+    {
+        $this->actingAs(User::factory()->graphics()->create());
+        $bug = $this->storeAsset('score-bug', 1920, 180);
+
+        Livewire::test(Board::class, ['show' => $this->show])
+            ->call('assignAll', $bug->id)
             ->assertForbidden();
     }
 

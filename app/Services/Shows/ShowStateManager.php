@@ -27,6 +27,22 @@ class ShowStateManager
         return $this->persist($show, $state);
     }
 
+    /**
+     * @param  array<string, int|null>  $sectionAssetIds
+     */
+    public function setSections(Show $show, array $sectionAssetIds): Show
+    {
+        $state = $this->normalise($show->current_state);
+
+        foreach ($sectionAssetIds as $sectionKey => $assetId) {
+            $state['sections'][$sectionKey] = ['asset_id' => $assetId];
+        }
+
+        $show->active_look_id = null;
+
+        return $this->persist($show, $state);
+    }
+
     public function clearSection(Show $show, string $sectionKey): Show
     {
         return $this->setSection($show, $sectionKey, null);

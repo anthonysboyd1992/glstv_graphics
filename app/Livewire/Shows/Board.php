@@ -193,6 +193,21 @@ class Board extends Component
         $this->afterStateChange();
     }
 
+    public function assignAll(int $assetId, ShowStateManager $state, AssetScaler $scaler): void
+    {
+        $this->authorize(Access::BOARD_TAKE);
+
+        $asset = Asset::query()->findOrFail($assetId);
+        $map = [];
+
+        foreach ($this->sections as $section) {
+            $map[$section->key] = $scaler->fitToSection($asset, $section)->id;
+        }
+
+        $state->setSections($this->show, $map);
+        $this->afterStateChange();
+    }
+
     public function clearSection(string $sectionKey, ShowStateManager $state): void
     {
         $this->authorize(Access::BOARD_TAKE);

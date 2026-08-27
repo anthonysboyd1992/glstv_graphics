@@ -147,28 +147,26 @@ class Cues extends Component
 
         $cue = $this->show->looks()->findOrFail($cueId);
 
-        $cue->items()->where('section_key', $sectionKey)->delete();
+        $this->writeCells($cue, [$sectionKey => $value], $scaler);
+        $this->syncLiveCue($cue, $state);
+        $this->refreshCues();
+    }
 
-        $attributes = match (true) {
-            $value === 'leave' => null,
-            $value === 'clear' => ['action' => LookItem::ACTION_CLEAR],
-            str_starts_with($value, 'asset:') => [
-                'action' => LookItem::ACTION_SET,
-                'asset_id' => $this->sizedAssetId((int) substr($value, 6), $sectionKey, $scaler),
-            ],
-            default => null,
-        };
+    /**
+     * Puts the same choice on every section of a cue, fitting each slot.
+     * Shift-click or "Every section" in the picker lands here.
+     */
+    public function fillCue(int $cueId, string $value, AssetScaler $scaler, ShowStateManager $state): void
+    {
+        $this->authorize(Access::CUES_EDIT);
 
-        if ($attributes !== null) {
-            $cue->items()->create($attributes + ['section_key' => $sectionKey]);
-        }
+        $cue = $this->show->looks()->findOrFail($cueId);
+        $writes = $this->sectionDefs
+            ->mapWithKeys(fn ($section) => [$section->key => $value])
+            ->all();
 
-        // The live feed is current_state, not the cue row. Re-applying keeps
-        // the rundown pointer and bumps the revision so vMix picks it up.
-        if ((int) $this->show->active_look_id === (int) $cue->id) {
-            $state->applyLook($this->show, $cue->load('items'));
-        }
-
+        $this->writeCells($cue, $writes, $scaler);
+        $this->syncLiveCue($cue, $state);
         $this->refreshCues();
     }
 
@@ -347,6 +345,39 @@ class Cues extends Component
         return $section
             ? $scaler->fitToSection($asset, $section)->id
             : $asset->id;
+    }
+
+    /**
+     * @param  array<string, string>  $values
+     */
+    protected function writeCells(Look $cue, array $values, AssetScaler $scaler): void
+    {
+        foreach ($values as $sectionKey => $value) {
+            $cue->items()->where('section_key', $sectionKey)->delete();
+
+            $attributes = match (true) {
+                $value === 'leave' => null,
+                $value === 'clear' => ['action' => LookItem::ACTION_CLEAR],
+                str_starts_with($value, 'asset:') => [
+                    'action' => LookItem::ACTION_SET,
+                    'asset_id' => $this->sizedAssetId((int) substr($value, 6), $sectionKey, $scaler),
+                ],
+                default => null,
+            };
+
+            if ($attributes !== null) {
+                $cue->items()->create($attributes + ['section_key' => $sectionKey]);
+            }
+        }
+    }
+
+    protected function syncLiveCue(Look $cue, ShowStateManager $state): void
+    {
+        // The live feed is current_state, not the cue row. Re-applying keeps
+        // the rundown pointer and bumps the revision so vMix picks it up.
+        if ((int) $this->show->active_look_id === (int) $cue->id) {
+            $state->applyLook($this->show, $cue->load('items'));
+        }
     }
 
     protected function refreshCues(): void
