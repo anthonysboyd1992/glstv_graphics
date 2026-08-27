@@ -79,7 +79,7 @@
                             </div>
                         </th>
                         @foreach ($this->sectionDefs as $section)
-                            <th class="min-w-44 border-b border-r border-zinc-800 px-3 py-2 text-left font-medium last:border-r-0">
+                            <th class="min-w-40 border-b border-r border-zinc-800 px-2 py-2 text-left font-medium last:border-r-0">
                                 {{ $section->label }}
                                 <span class="block text-[10px] font-normal tabular-nums text-zinc-500">
                                     {{ $section->dimensionLabel() }}
@@ -159,25 +159,24 @@
 
                             @foreach ($this->sectionDefs as $section)
                                 @php($item = $row[$section->key] ?? null)
-                                <td class="border-b border-r border-zinc-800 p-1 align-top last:border-r-0">
+                                <td class="border-b border-r border-zinc-800 p-1 align-middle last:border-r-0">
                                     <div class="relative" x-data="{ open: false }" @click.outside="open = false">
                                         <button
                                             type="button"
                                             @if ($canEdit) @click="open = ! open" @endif
+                                            @if ($item?->asset) title="{{ $item->asset->name }}" @endif
                                             @class([
-                                                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left',
-                                                'hover:bg-zinc-800' => $canEdit,
-                                                'text-zinc-500' => ! $item,
+                                                'flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-zinc-950',
+                                                'hover:ring-1 hover:ring-zinc-500' => $canEdit,
                                                 'cursor-default' => ! $canEdit,
                                             ])
                                         >
                                             @if ($item && $item->action === \App\Models\LookItem::ACTION_CLEAR)
                                                 <x-ui.badge>{{ __('Clear') }}</x-ui.badge>
                                             @elseif ($item && $item->asset)
-                                                <img src="{{ $item->asset->url() }}" alt="" class="h-6 w-9 shrink-0 rounded bg-zinc-900 object-contain" />
-                                                <span class="min-w-0 flex-1 truncate text-xs">{{ $item->asset->name }}</span>
+                                                <img src="{{ $item->asset->url() }}" alt="{{ $item->asset->name }}" class="max-h-16 max-w-full object-contain" />
                                             @else
-                                                <span class="text-xs">{{ __('—') }}</span>
+                                                <span class="text-xs text-zinc-600">{{ __('—') }}</span>
                                             @endif
                                         </button>
 
@@ -185,7 +184,7 @@
                                         <div
                                             x-show="open"
                                             x-cloak
-                                            class="absolute z-30 mt-1 max-h-80 w-64 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+                                            class="absolute z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
                                         >
                                             <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'leave')" @click="open = false">
                                                 {{ __('Leave alone') }}
@@ -198,10 +197,11 @@
                                             @forelse ($this->assetsBySection[$section->key] ?? [] as $asset)
                                                 @php($selected = $item && $item->asset && ($item->asset_id === $asset->id || $item->asset->source_asset_id === $asset->id))
                                                 @php($needsFit = $section->hasDimensions() && ! $section->isExactSize($asset))
-                                                <button type="button" class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')" @click="open = false">
-                                                    <span @class(['truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
+                                                <button type="button" class="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-zinc-800" wire:click="setSection({{ $cue->id }}, '{{ $section->key }}', 'asset:{{ $asset->id }}')" @click="open = false">
+                                                    <img src="{{ $asset->url() }}" alt="" class="h-8 w-12 shrink-0 rounded bg-zinc-950 object-contain" />
+                                                    <span @class(['min-w-0 flex-1 truncate', 'font-medium' => $selected])>{{ $asset->name }}</span>
                                                     @if ($needsFit)
-                                                        <span class="text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
+                                                        <span class="shrink-0 text-xs text-amber-400">{{ $section->dimensionLabel() }}</span>
                                                     @endif
                                                 </button>
                                             @empty

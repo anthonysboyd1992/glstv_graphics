@@ -104,6 +104,20 @@ class CuesTest extends TestCase
         $this->assertSame(LookItem::ACTION_SET, $items[0]->action);
     }
 
+    public function test_the_grid_shows_the_picture_for_a_filled_cell(): void
+    {
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue = $this->show->looks()->create(['name' => 'GLSS Heat 1 extra', 'sort_order' => 99]);
+        $cue->items()->create([
+            'section_key' => 'ScoreBug',
+            'action' => LookItem::ACTION_SET,
+            'asset_id' => $asset->id,
+        ]);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->assertSeeHtml($asset->url());
+    }
+
     public function test_choosing_an_off_size_asset_stores_a_fitted_copy(): void
     {
         $asset = $this->storeAsset('Corner Mark', 500, 500);
