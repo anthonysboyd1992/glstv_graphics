@@ -132,7 +132,9 @@ class CuesTest extends TestCase
         ]);
 
         Livewire::test(Cues::class, ['show' => $this->show])
-            ->assertSeeHtml($asset->publicPath());
+            ->assertSeeHtml($asset->publicPath())
+            ->assertSeeHtml('wire:loading.flex')
+            ->assertSeeHtml('animate-spin');
     }
 
     public function test_the_asset_picker_renders_outside_the_scrolling_table(): void

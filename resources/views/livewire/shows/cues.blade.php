@@ -169,15 +169,48 @@
                                             @endif
                                             @if ($item?->asset) title="{{ $item->asset->name }}" @endif
                                             @class([
-                                                'flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-zinc-950',
+                                                'relative flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-zinc-950',
                                                 'hover:ring-1 hover:ring-zinc-500' => $canEdit,
                                                 'cursor-default' => ! $canEdit,
                                             ])
                                         >
+                                            @if ($canEdit)
+                                                <span
+                                                    wire:loading.flex
+                                                    wire:target="setSection({{ $cue->id }}, '{{ $section->key }}')"
+                                                    class="absolute inset-0 z-20 items-center justify-center bg-zinc-950/80"
+                                                    aria-hidden="true"
+                                                >
+                                                    <span class="size-5 animate-spin rounded-full border-2 border-zinc-600 border-t-white"></span>
+                                                </span>
+                                            @endif
+
                                             @if ($item && $item->action === \App\Models\LookItem::ACTION_CLEAR)
                                                 <x-ui.badge>{{ __('Clear') }}</x-ui.badge>
                                             @elseif ($item && $item->asset)
-                                                <img src="{{ $item->asset->original()->publicPath() }}" alt="{{ $item->asset->name }}" class="max-h-16 max-w-full object-contain" />
+                                                <span
+                                                    wire:key="cue-thumb-{{ $cue->id }}-{{ $section->key }}-{{ $item->asset->original()->id }}"
+                                                    class="relative flex h-full w-full items-center justify-center"
+                                                    x-data="{ ready: false }"
+                                                >
+                                                    <img
+                                                        src="{{ $item->asset->original()->publicPath() }}"
+                                                        alt="{{ $item->asset->name }}"
+                                                        class="max-h-16 max-w-full object-contain transition-opacity duration-150"
+                                                        x-init="ready = $el.complete && $el.naturalWidth > 0"
+                                                        x-on:load="ready = true"
+                                                        x-on:error="ready = true"
+                                                        x-bind:class="ready ? 'opacity-100' : 'opacity-0'"
+                                                    />
+                                                    <span
+                                                        x-show="! ready"
+                                                        x-cloak
+                                                        class="absolute inset-0 flex items-center justify-center"
+                                                        aria-hidden="true"
+                                                    >
+                                                        <span class="size-5 animate-spin rounded-full border-2 border-zinc-600 border-t-white"></span>
+                                                    </span>
+                                                </span>
                                             @else
                                                 <span class="text-xs text-zinc-600">{{ __('—') }}</span>
                                             @endif
