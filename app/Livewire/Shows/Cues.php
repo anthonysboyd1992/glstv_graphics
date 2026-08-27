@@ -8,6 +8,7 @@ use App\Models\Look;
 use App\Models\LookItem;
 use App\Models\Show;
 use App\Services\Assets\AssetScaler;
+use App\Services\Shows\ShowStateManager;
 use App\Support\Access;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -23,6 +24,8 @@ use Livewire\Component;
  *
  * Every cell is a picture or empty. Go Live puts this row on air as-is, so a
  * blank cell clears that section rather than holding the previous graphic.
+ * Changing a cell on the live cue writes that picture through to the feed
+ * immediately, so vMix does not wait for another Go Live.
  * Edits save on the spot rather than behind a form — authoring a night is
  * dozens of small changes, and a save button between each one would be the
  * slowest part of the job.
@@ -138,7 +141,7 @@ class Cues extends Component
      * Sets a cell. The value is a small tagged string rather than a pair of
      * fields because it comes straight off one dropdown.
      */
-    public function setSection(int $cueId, string $sectionKey, string $value, AssetScaler $scaler): void
+    public function setSection(int $cueId, string $sectionKey, string $value, AssetScaler $scaler, ShowStateManager $state): void
     {
         $this->authorize(Access::CUES_EDIT);
 
@@ -158,6 +161,12 @@ class Cues extends Component
 
         if ($attributes !== null) {
             $cue->items()->create($attributes + ['section_key' => $sectionKey]);
+        }
+
+        // The live feed is current_state, not the cue row. Re-applying keeps
+        // the rundown pointer and bumps the revision so vMix picks it up.
+        if ((int) $this->show->active_look_id === (int) $cue->id) {
+            $state->applyLook($this->show, $cue->load('items'));
         }
 
         $this->refreshCues();

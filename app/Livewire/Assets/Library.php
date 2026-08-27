@@ -7,21 +7,23 @@ use App\Models\Asset;
 use App\Services\Assets\AssetCache;
 use App\Services\Assets\AssetImporter;
 use App\Support\Access;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
-use Livewire\WithPagination;
 use Throwable;
 
 #[Title('Asset library')]
 class Library extends Component
 {
     use Toasts;
-    use WithFileUploads, WithPagination;
+    use WithFileUploads;
+
+    public const CHUNK = 24;
 
     /** @var array<int, TemporaryUploadedFile> */
     public array $uploads = [];
@@ -29,27 +31,50 @@ class Library extends Component
     #[Url]
     public string $search = '';
 
+    public int $perPage = self::CHUNK;
+
     public ?int $renamingId = null;
 
     public string $renameValue = '';
 
     public function updatedSearch(): void
     {
-        $this->resetPage();
+        $this->perPage = self::CHUNK;
+        $this->refreshAssets();
+    }
+
+    public function loadMore(): void
+    {
+        if (! $this->hasMoreAssets) {
+            return;
+        }
+
+        $this->perPage += self::CHUNK;
+        $this->refreshAssets();
+    }
+
+    /**
+     * Fetches one extra row so the sentinel knows whether to keep listening.
+     *
+     * @return Collection<int, Asset>
+     */
+    #[Computed]
+    public function window(): Collection
+    {
+        return $this->assetQuery()->limit($this->perPage + 1)->get();
+    }
+
+    /** @return Collection<int, Asset> */
+    #[Computed]
+    public function assets(): Collection
+    {
+        return $this->window->take($this->perPage);
     }
 
     #[Computed]
-    public function assets(): LengthAwarePaginator
+    public function hasMoreAssets(): bool
     {
-        return Asset::query()
-            ->originals()
-            ->when($this->search !== '', fn ($query) => $query->where(function ($query) {
-                $query->where('name', 'like', '%'.$this->search.'%')
-                    ->orWhere('original_filename', 'like', '%'.$this->search.'%');
-            }))
-            ->orderBy('name')
-            ->orderBy('id')
-            ->paginate(24);
+        return $this->window->count() > $this->perPage;
     }
 
     public function save(AssetImporter $importer): void
@@ -74,7 +99,7 @@ class Library extends Component
         }
 
         $this->reset('uploads');
-        unset($this->assets);
+        $this->refreshAssets();
 
         // Re-uploading a file that is already stored is expected and harmless:
         // the digest matches and the existing record is reused.
@@ -108,7 +133,7 @@ class Library extends Component
         Asset::whereKey($this->renamingId)->update(['name' => trim($this->renameValue)]);
 
         $this->cancelRename();
-        unset($this->assets);
+        $this->refreshAssets();
 
         $this->toast(__('Renamed.'));
     }
@@ -129,8 +154,26 @@ class Library extends Component
         $cache->forget($asset);
         $asset->delete();
 
-        unset($this->assets);
+        $this->refreshAssets();
 
         $this->toast(__('Asset deleted.'));
+    }
+
+    /** @return Builder<Asset> */
+    protected function assetQuery(): Builder
+    {
+        return Asset::query()
+            ->originals()
+            ->when($this->search !== '', fn ($query) => $query->where(function ($query) {
+                $query->where('name', 'like', '%'.$this->search.'%')
+                    ->orWhere('original_filename', 'like', '%'.$this->search.'%');
+            }))
+            ->orderBy('name')
+            ->orderBy('id');
+    }
+
+    protected function refreshAssets(): void
+    {
+        unset($this->window, $this->assets, $this->hasMoreAssets);
     }
 }

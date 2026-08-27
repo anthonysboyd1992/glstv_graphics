@@ -80,6 +80,44 @@ class AssetLibraryTest extends TestCase
         $this->assertSame('Score Bug', $asset->refresh()->name);
     }
 
+    public function test_the_library_appends_the_next_chunk_instead_of_paging(): void
+    {
+        foreach (range(1, 3) as $i) {
+            app(AssetImporter::class)->import(
+                UploadedFile::fake()->image("g{$i}.png", 40 + $i, 40 + $i),
+                sprintf('Graphic %02d', $i),
+            );
+        }
+
+        Livewire::test(Library::class)
+            ->set('perPage', 2)
+            ->assertSee('Graphic 01')
+            ->assertSee('Graphic 02')
+            ->assertDontSee('Graphic 03')
+            ->assertDontSee('Next')
+            ->call('loadMore')
+            ->assertSee('Graphic 03');
+    }
+
+    public function test_searching_starts_the_list_over(): void
+    {
+        foreach (range(1, 3) as $i) {
+            app(AssetImporter::class)->import(
+                UploadedFile::fake()->image("s{$i}.png", 60 + $i, 60 + $i),
+                sprintf('Graphic %02d', $i),
+            );
+        }
+
+        Livewire::test(Library::class)
+            ->set('perPage', 2)
+            ->call('loadMore')
+            ->assertSet('perPage', 2 + Library::CHUNK)
+            ->set('search', 'Graphic 03')
+            ->assertSet('perPage', Library::CHUNK)
+            ->assertSee('Graphic 03')
+            ->assertDontSee('Graphic 01');
+    }
+
     protected function storeAsset(string $name): Asset
     {
         return app(AssetImporter::class)->import(

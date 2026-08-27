@@ -197,6 +197,80 @@ class CuesTest extends TestCase
         $this->assertSame('LowerThird', $cue->items()->firstOrFail()->section_key);
     }
 
+    public function test_changing_a_logo_on_the_live_cue_updates_the_feed(): void
+    {
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue = $this->show->looks()->firstOrFail();
+
+        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cue);
+        $this->show->refresh();
+
+        $before = $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug'];
+        $this->assertStringContainsString('/assets/empty.png', $before);
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'asset:'.$asset->id);
+
+        $this->show->refresh();
+        $row = $this->getJson($this->show->dataSourceUrl('json'))->json()[0];
+        $item = $cue->items()->where('section_key', 'ScoreBug')->firstOrFail();
+
+        $this->assertSame($cue->id, $this->show->active_look_id);
+        $this->assertSame($item->asset_id, $this->show->sectionAssetId('ScoreBug'));
+        $this->assertStringNotContainsString('/assets/empty.png', $row['ScoreBug']);
+        $this->assertNotSame($before, $row['ScoreBug']);
+    }
+
+    public function test_clearing_a_logo_on_the_live_cue_publishes_empty(): void
+    {
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+        $cue = $this->show->looks()->firstOrFail();
+        $cue->items()->create([
+            'section_key' => 'ScoreBug',
+            'action' => LookItem::ACTION_SET,
+            'asset_id' => $asset->id,
+        ]);
+
+        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cue->load('items'));
+        $this->show->refresh();
+
+        $this->assertStringNotContainsString(
+            '/assets/empty.png',
+            $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug'],
+        );
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cue->id, 'ScoreBug', 'leave');
+
+        $this->show->refresh();
+        $row = $this->getJson($this->show->dataSourceUrl('json'))->json()[0];
+
+        $this->assertSame($cue->id, $this->show->active_look_id);
+        $this->assertNull($this->show->sectionAssetId('ScoreBug'));
+        $this->assertStringContainsString('/assets/empty.png', $row['ScoreBug']);
+    }
+
+    public function test_changing_a_logo_on_a_cue_that_is_not_live_leaves_the_feed_alone(): void
+    {
+        $cues = $this->show->looks()->orderBy('sort_order')->get();
+        $asset = $this->storeAsset('Score Bug', 1920, 180);
+
+        app(\App\Services\Shows\ShowStateManager::class)->applyLook($this->show, $cues[0]);
+        $this->show->refresh();
+
+        $beforeState = $this->show->current_state;
+        $beforeUrl = $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug'];
+
+        Livewire::test(Cues::class, ['show' => $this->show])
+            ->call('setSection', $cues[1]->id, 'ScoreBug', 'asset:'.$asset->id);
+
+        $this->show->refresh();
+
+        $this->assertSame($cues[0]->id, $this->show->active_look_id);
+        $this->assertSame($beforeState, $this->show->current_state);
+        $this->assertSame($beforeUrl, $this->getJson($this->show->dataSourceUrl('json'))->json()[0]['ScoreBug']);
+    }
+
     public function test_a_duplicate_copies_the_cells_and_lands_beneath_its_source(): void
     {
         $source = $this->show->looks()->orderBy('sort_order')->firstOrFail();

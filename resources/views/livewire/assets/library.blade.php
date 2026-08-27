@@ -102,6 +102,20 @@
             @endforeach
         </div>
 
-        <div>{{ $this->assets->links() }}</div>
+        @if ($this->hasMoreAssets)
+            <div
+                wire:key="library-more-{{ $this->perPage }}"
+                class="flex justify-center py-6"
+                x-data
+                x-init="
+                    const io = new IntersectionObserver((entries) => {
+                        if (entries[0].isIntersecting) $wire.loadMore()
+                    }, { rootMargin: '240px' })
+                    io.observe($el)
+                "
+            >
+                <p wire:loading wire:target="loadMore" class="text-sm text-zinc-500">{{ __('Loading more…') }}</p>
+            </div>
+        @endif
     @endif
 </section>
